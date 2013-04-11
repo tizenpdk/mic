@@ -1,4 +1,4 @@
-mic (0.18-1) unstable; urgency=low
+mic (0.18.1-1) unstable; urgency=low
 
   * put build_id before image name for release option
   * mount build directory as tmpfs to speed up
