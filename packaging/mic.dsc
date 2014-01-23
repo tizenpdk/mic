@@ -2,7 +2,7 @@ Format: 1.0
 Source: mic
 Binary: mic, mic-native
 Architecture: all
-Version: 0.23
+Version: 0.23.1
 Maintainer: Gui Chen <gui.chen@intel.com>
 Homepage: https://review.tizen.org/gerrit/tools/mic
 Standards-Version: 3.8.0

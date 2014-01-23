@@ -1,28 +1,16 @@
-MIC Image Creator 0.23 Release Notes
+MIC Image Creator 0.23.1 Release Notes
 ====================================
-Released December 18 2013
+Released January 23 2014
 
 This release note documents the changes included in the new release. And
 the release contains new features, enhancements and bug fixes.
 
 New Features & Ehancements
 --------------------------
- * support arm64 architecture image creation in native mode
-   (to know more about arm64 support, check doc/KNOWN_ISSUES)
- * new distribution support: Ubuntu 13.10 and OpenSUSE 13.1
- * split the "native" running mode support to a separated sub-package
- * reduced the dependencies(packages) of mic main package dramatically
- * add new options '--interactive' and '--non-interactive' to enable/disable interaction
- * add new option '--uuid' for 'part' in ks file to set filesystem uuid
- * export more environment variables related to installer framework for loop format
 
 Bug Fixes
 ---------
- * fix bootstrap handling if bootstrap package failed
- * fix 'mapper_device' key error
- * fix detailed error messages missing in mounting
- * fix version comparing issue of urlgrabber in Fedora
-
+ * fix bmap creation failed if using tmpfs
 
 Resource
 --------
