@@ -128,6 +128,7 @@ class RawPlugin(ImagerPlugin):
             creator.unmount()
             creator.generate_bmap()
             creator.package(creatoropts["destdir"])
+            creator.create_manifest()
             if creatoropts['release'] is not None:
                 creator.release_output(ksconf, creatoropts['destdir'], creatoropts['release'])
             creator.print_outimage_info()
