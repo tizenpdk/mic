@@ -10,6 +10,7 @@ Many mainstream Linux distributions are supported in Tizen Tools repository, inc
 - Ubuntu (12.10, 12.04, 11.10)
 - openSUSE (12.2, 12.1)
 - Feodra (17, 16)
+- Debian (7.0)
 
 Ubuntu Installation
 -------------------
