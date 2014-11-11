@@ -218,7 +218,7 @@ class ConfigMgr(object):
             self.create['name'] = self.create['release'] + '_' + self.create['name']
 
             if not self.create['logfile']:
-                self.create['logfile'] = os.path.join(self.create['outdir'],
+                self.create['logfile'] = os.path.join(self.create['destdir'],
                                                       self.create['name'] + ".log")
                 self.create['releaselog'] = True
                 self.set_logfile()

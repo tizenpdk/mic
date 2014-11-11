@@ -64,11 +64,14 @@ class ImagerPlugin(_Plugin):
             image = os.path.join(destdir, name)
             if not os.path.exists(image):
                 continue
-
             if msger.ask("Target image/dir: %s already exists, "
-                         "clean up and continue?" % image):
+                         "clean up the old files and continue?" % image):
                 if os.path.isdir(image):
-                    shutil.rmtree(image)
+                    for path, dirs, files in os.walk(os.path.abspath(image)):
+                        for fname in files:
+                            fpath = os.path.join(path, fname)
+                            if not fpath.endswith('.log'):
+                                os.remove(fpath)
                 else:
                     os.unlink(image)
             else:
