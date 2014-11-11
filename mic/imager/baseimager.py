@@ -1293,9 +1293,6 @@ class BaseImageCreator(object):
 
         # save log file, logfile is only available in creator attrs
         if hasattr(self, 'releaselog') and self.releaselog:
-            final_logfile = _rpath(self.name+'.log')
-            shutil.move(self.logfile, final_logfile)
-            self.logfile = final_logfile
             outimages.append(self.logfile)
 
         # rename iso and usbimg
