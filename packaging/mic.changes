@@ -1,3 +1,9 @@
+* Mon Nov 17 2014 Yongfeng Du <dolpher.du@intel.com> - 0.24.3
+  * add qcow2 image format support
+  * bug fix:
+    - fix qemu arm and arm64 issues
+    - remove --preserve-order option in taring fs image
+
 * Wed Jul 09 2014 Gui Chen <gui.chen@intel.com> - 0.24.2
   * enable ssl_verify in config file
   * fix logfile incompleted issue
