@@ -145,6 +145,7 @@ class QcowPlugin(ImagerPlugin):
             creator.copy_kernel()
             creator.unmount()
             creator.package(creatoropts["destdir"])
+            creator.create_manifest()
 
             if creatoropts['release'] is not None:
                 creator.release_output(ksconf,
