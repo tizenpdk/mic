@@ -1,3 +1,8 @@
+* Mon Nov 24 2014 Yongfeng Du <dolpher.du@intel.com> - 0.24.3
+  * bug fix:
+    - fix qemu arm and arm64 issues
+    - remove --preserve-order option in taring fs image
+
 * Wed Jul 09 2014 Gui Chen <gui.chen@intel.com> - 0.24.2
   * enable ssl_verify in config file
   * fix logfile incompleted issue

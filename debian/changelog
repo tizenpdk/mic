@@ -1,3 +1,10 @@
+mic (0.24.3~rc1) unstable; urgency=low
+   * bug fix:
+     - fix qemu arm and arm64 issues
+     - remove --preserve-order option in taring fs image
+
+ -- Yongfeng Du <dolpher.du@intel.com> Mon, 24 Nov 2014 17:25:35 +0800
+
 mic (0.24.2) unstable; urgency=low
    * enable ssl_verify in config file
    * fix logfile incompleted issue
