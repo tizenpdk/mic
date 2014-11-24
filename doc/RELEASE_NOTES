@@ -1,18 +1,19 @@
-MIC Image Creator 0.24.3 Release Notes
-======================================
-Released Nov 17 2014
+MIC Image Creator 0.24.2 Release Notes
+====================================
+Released June 09 2014
 
 This release note documents the changes included in the new release. And
 the release contains new features, enhancements and bug fixes.
 
 New Features & Ehancements
 --------------------------
- * add qcow2 image format support
+ * enable ssl_verify in config file
 
 Bug Fixes
 ---------
- * fix qemu arm and arm64 issues
- * remove --preserve-order option in taring fs image
+ * fix logfile incompleted issue
+ * fix md5sum to be compatible with utility md5sum
+ * fix locale issue in systemd service
 
 Resource
 --------
