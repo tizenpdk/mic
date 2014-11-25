@@ -1,4 +1,4 @@
-mic (0.24.3~rc1) unstable; urgency=low
+mic (0.24.3) unstable; urgency=low
    * bug fix:
      - fix qemu arm and arm64 issues
      - remove --preserve-order option in taring fs image
