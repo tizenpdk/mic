@@ -129,10 +129,10 @@ class BindChrootMount:
                 return
 
         if self.mount_option:
-            cmdline = [self.mountcmd, "--bind", "-o", "%s" % \
+            cmdline = [self.mountcmd, "-o" ,"bind", "-o", "%s" % \
                        self.mount_option, self.src, self.dest]
         else:
-            cmdline = [self.mountcmd, "--bind", self.src, self.dest]
+            cmdline = [self.mountcmd, "-o" ,"bind", self.src, self.dest]
         rc, errout = runner.runtool(cmdline, catch=2)
         if rc != 0:
             raise MountError("Bind-mounting '%s' to '%s' failed: %s" %
