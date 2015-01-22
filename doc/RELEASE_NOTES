@@ -8,6 +8,7 @@ the release contains new features, enhancements and bug fixes.
 New Features & Enhancements
 ---------------------------
   * generate manifest file to describe image information
+  * update mount option to make it more general
 
 Bug Fixes
 ---------

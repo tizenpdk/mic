@@ -1,6 +1,7 @@
 Release 0.24.4 - Thu Jan 22 2015 - Lihong Sun <lihongx.sun@intel.com>
 =====================================================================
   * generate manifest file to describe image information
+  * update mount option to make it more general
   * bug fix:
      - fix incorrect logfile location of '--release' if creation failed
      - update dependency package for mic

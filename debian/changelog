@@ -1,5 +1,6 @@
-mic (0.24.4~rc1) unstable; urgency=low
+mic (0.24.4) unstable; urgency=low
   * generate manifest file to describe image information
+  * update mount option to make it more general
   * bug fix:
      - fix incorrect logfile location of '--release' if creation failed
      - update dependency package for mic
