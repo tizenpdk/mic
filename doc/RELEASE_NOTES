@@ -1,3 +1,21 @@
+MIC Image Creator 0.24.4 Release Notes
+======================================
+Released Jan 22 2015
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+---------------------------
+  * generate manifest file to describe image information
+
+Bug Fixes
+---------
+  * fix incorrect logfile location of '--release' if creation failed
+  * update dependency package for mic
+  * add catching 'distribution not found' exception
+
+
 MIC Image Creator 0.24.3 Release Notes
 ======================================
 Released Nov 24 2014

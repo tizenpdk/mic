@@ -1,3 +1,11 @@
+mic (0.24.4~rc1) unstable; urgency=low
+  * generate manifest file to describe image information
+  * bug fix:
+     - fix incorrect logfile location of '--release' if creation failed
+     - update dependency package for mic
+     - add catching 'distribution not found' exception
+ -- Lihong Sun <lihongx.sun@intel.com> Thu, 22 Jan 2015 17:25:35 +0800
+
 mic (0.24.3) unstable; urgency=low
    * bug fix:
      - fix qemu arm and arm64 issues

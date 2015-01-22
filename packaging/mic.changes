@@ -1,3 +1,10 @@
+* Thu Jan 22 2015 Lihong Sun <lihongx.sun@intel.com> - 0.24.4
+  * generate manifest file to describe image information
+  * bug fix:
+     - fix incorrect logfile location of '--release' if creation failed
+     - update dependency package for mic
+     - add catching 'distribution not found' exception
+
 * Mon Nov 24 2014 Yongfeng Du <dolpher.du@intel.com> - 0.24.3
   * bug fix:
     - fix qemu arm and arm64 issues
