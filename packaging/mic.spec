@@ -21,7 +21,8 @@ Requires:   device-mapper
 Requires:   cpio
 Requires:   gzip
 Requires:   bzip2
-Requires:   qemu-arm-static
+#Requires:   qemu-arm-static
+Requires:   qemu-linux-user
 Requires:   python-urlgrabber
 #Requires:   btrfs-progs
 
