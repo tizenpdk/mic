@@ -1,3 +1,14 @@
+* Fri Feb 6 2015 Lihong Sun <lihongx.sun@intel.com> - 0.24.5
+  * refactor archive and compress module
+  * support sparse handle for tar command
+  * support lzop compress
+  * add unittest for new added archive module
+  * add more output info to make image creation process more clear
+  * bug fix:
+     - fix pylint
+     - fix 'status' traceback issue
+     - fix copyright issue
+
 * Thu Jan 22 2015 Lihong Sun <lihongx.sun@intel.com> - 0.24.4
   * generate manifest file to describe image information
   * update mount option to make it more general
