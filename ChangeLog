@@ -10,6 +10,7 @@ Release 0.24.5 - Fri Feb 6 2015 - Lihong Sun <lihongx.sun@intel.com>
      - fix 'status' traceback issue
      - fix copyright issue
 
+
 Release 0.24.4 - Thu Jan 22 2015 - Lihong Sun <lihongx.sun@intel.com>
 =====================================================================
   * generate manifest file to describe image information
