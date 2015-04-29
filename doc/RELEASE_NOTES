@@ -1,34 +1,43 @@
-MIC Image Creator 0.26 Release Notes
+MIC Image Creator 0.27 Release Notes
 ======================================
-Released Oct 14 2014
+Released Apr 29 2015
 
 This release note documents the changes included in the new release. And
 the release contains new features, enhancements and bug fixes.
 
 New Features & Ehancements
 --------------------------
+  * new distribution support: Ubuntu 14.04 and Debian 7.0
+  * generate manifest file to describe image information
+  * refactor archive and compress module
+  * support sparse handle for tar command
+  * replace system V with systemd on locale setting
+  * support lzop compress
   * add new arch MIPS support
   * add qcow2 image format support
   * add strict mode for package installing
   * enable ssl_verify option in config file
   * enhance checksums of outputs: md5sum, sha1sum, sha256sum
   * enhance VCS info in yum backend
+  * drop mic-native support
+  * update mount option
+  * revert bind mount config file to instroot
 
 Bug Fixes
 ---------
+  * fix logfile incomplete in release option
+  * fix config file disappear in bootstrap
+  * fix aarch64 bin_format
+  * fix pylint
   * fix real path of device mapper causing initrd failure
   * fix qemu arm and arm64 issues
   * fix AttributeError in zypp backend
   * fix 'python-xml' depends used by cElements
+  * fix xml requirements
+  * fix logfile not in release of '--release' when creation failed
+  * fix copyright missing issue
+  * fix syslinux installation path issue in Arch Linux
 
-Resource
---------
- * SITE: https://www.tizen.org/
- * REPO: https://download.tizen.org/tools/
- * DOCS: https://source.tizen.org/documentation/reference/mic-image-creator
- * CODE: https://github.com/01org/mic
- * BUGS: https://bugs.tizen.org/jira
- * HELP: general@lists.tizen.org
 
 Report Bugs
 -----------
