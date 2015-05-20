@@ -301,12 +301,15 @@ class Zypp(BackendPlugin):
         self.to_deselect.append(pkg)
 
     def selectGroup(self, grp, include = ksparser.GROUP_DEFAULT):
+        def compareGroup(pitem):
+            item = zypp.asKindPattern(pitem)
+            return item.repoInfo().priority()
         if not self.Z:
             self.__initialize_zypp()
         found = False
         q = zypp.PoolQuery()
         q.addKind(zypp.ResKind.pattern)
-        for pitem in q.queryResults(self.Z.pool()):
+        for pitem in sorted(q.queryResults(self.Z.pool()), key=compareGroup):
             item = zypp.asKindPattern(pitem)
             summary = "%s" % item.summary()
             name = "%s" % item.name()
