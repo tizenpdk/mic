@@ -1,6 +1,6 @@
 MIC - Mic the Image Creator
 ===========================
-
+ 
 Overview
 --------
 MIC means "Mic the Image Creator" and it's used to create images for Tizen.
