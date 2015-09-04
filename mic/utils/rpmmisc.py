@@ -112,6 +112,13 @@ class RPMInstallCallback:
                     rpmloc = h
                     hdr = readRpmHeader(self.ts, h)
 
+                m = re.match("(.*)-(\d+.*)-(\d+\.\d+)\.(.+)\.rpm", os.path.basename(rpmloc))
+                if m:
+                    pkgname = m.group(1)
+                else:
+                    pkgname = os.path.basename(rpmloc)
+                msger.info("Next install: %s " % pkgname)
+
                 handle = self._makeHandle(hdr)
                 fd = os.open(rpmloc, os.O_RDONLY)
                 self.callbackfilehandles[handle]=fd
