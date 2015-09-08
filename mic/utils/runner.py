@@ -16,10 +16,9 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os
-import subprocess
+from subprocess import *
 
 from mic import msger
-from mic.utils import errors
 
 def runtool(cmdln_or_args, catch=1):
     """ wrapper for most of the subprocess calls
@@ -53,25 +52,24 @@ def runtool(cmdln_or_args, catch=1):
         sout = dev_null
         serr = dev_null
     elif catch == 1:
-        sout = subprocess.PIPE
+        sout = PIPE
         serr = dev_null
     elif catch == 2:
         sout = dev_null
-        serr = subprocess.PIPE
+        serr = PIPE
     elif catch == 3:
-        sout = subprocess.PIPE
-        serr = subprocess.STDOUT
+        sout = PIPE
+        serr = STDOUT
 
     try:
-        p = subprocess.Popen(cmdln_or_args, stdout=sout,
-                             stderr=serr, shell=shell)
+        p = Popen(cmdln_or_args, stdout=sout, stderr=serr, shell=shell)
         (sout, serr) = p.communicate()
         # combine stdout and stderr, filter None out
         out = ''.join(filter(None, [sout, serr]))
     except OSError, e:
         if e.errno == 2:
             # [Errno 2] No such file or directory
-            raise errors.CreatorError('Cannot run command: %s, lost dependency?' % cmd)
+            msger.error('Cannot run command: %s, lost dependency?' % cmd)
         else:
             raise # relay
     finally:

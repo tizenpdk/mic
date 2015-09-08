@@ -48,25 +48,17 @@ class LoopPlugin(ImagerPlugin):
         ${cmd_option_list}
         """
 
+        if not args:
+            raise errors.Usage("need one argument as the path of ks file")
+
         if len(args) != 1:
             raise errors.Usage("Extra arguments given")
 
         creatoropts = configmgr.create
         ksconf = args[0]
 
-        if creatoropts['runtime'] == "bootstrap":
-            configmgr._ksconf = ksconf
-            rt_util.bootstrap_mic()
-        elif not rt_util.inbootstrap():
-            try:
-                fs_related.find_binary_path('mic-native')
-            except errors.CreatorError:
-                if not msger.ask("Subpackage \"mic-native\" has not been "
-                                 "installed in your host system, still "
-                                 "continue with \"native\" running mode?",
-                                 False):
-                    raise errors.Abort("Abort because subpackage 'mic-native' "
-                                       "has not been installed")
+        if not os.path.exists(ksconf):
+            raise errors.CreatorError("Can't find the file: %s" % ksconf)
 
         recording_pkgs = []
         if len(creatoropts['record_pkgs']) > 0:
@@ -75,30 +67,35 @@ class LoopPlugin(ImagerPlugin):
         if creatoropts['release'] is not None:
             if 'name' not in recording_pkgs:
                 recording_pkgs.append('name')
-            if 'vcs' not in recording_pkgs:
-                recording_pkgs.append('vcs')
 
+        ksconf = misc.normalize_ksfile(ksconf,
+                                       creatoropts['release'],
+                                       creatoropts['arch'])
         configmgr._ksconf = ksconf
+
+        # Called After setting the configmgr._ksconf
+        # as the creatoropts['name'] is reset there.
+        if creatoropts['release'] is not None:
+            creatoropts['outdir'] = "%s/%s/images/%s/" % (creatoropts['outdir'],
+                                                          creatoropts['release'],
+                                                          creatoropts['name'])
 
         # try to find the pkgmgr
         pkgmgr = None
-        backends = pluginmgr.get_plugins('backend')
-        if 'auto' == creatoropts['pkgmgr']:
-            for key in configmgr.prefer_backends:
-                if key in backends:
-                    pkgmgr = backends[key]
-                    break
-        else:
-            for key in backends.keys():
-                if key == creatoropts['pkgmgr']:
-                    pkgmgr = backends[key]
-                    break
+        for (key, pcls) in pluginmgr.get_plugins('backend').iteritems():
+            if key == creatoropts['pkgmgr']:
+                pkgmgr = pcls
+                break
 
         if not pkgmgr:
-            raise errors.CreatorError("Can't find backend: %s, "
-                                      "available choices: %s" %
-                                      (creatoropts['pkgmgr'],
-                                       ','.join(backends.keys())))
+            pkgmgrs = pluginmgr.get_plugins('backend').keys()
+            raise errors.CreatorError("Can't find package manager: %s "
+                                      "(availables: %s)" \
+                                      % (creatoropts['pkgmgr'],
+                                         ', '.join(pkgmgrs)))
+
+        if creatoropts['runtime']:
+            rt_util.runmic_in_runtime(creatoropts['runtime'], creatoropts, ksconf, None)
 
         creator = LoopImageCreator(creatoropts,
                                    pkgmgr,
@@ -108,11 +105,9 @@ class LoopPlugin(ImagerPlugin):
         if len(recording_pkgs) > 0:
             creator._recording_pkgs = recording_pkgs
 
-        image_names = [creator.name + ".img"]
-        image_names.extend(creator.get_image_names())
         self.check_image_exists(creator.destdir,
                                 creator.pack_to,
-                                image_names,
+                                [creator.name + ".img"],
                                 creatoropts['release'])
 
         try:
@@ -122,12 +117,11 @@ class LoopPlugin(ImagerPlugin):
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
             creator.unmount()
-            creator.package(creatoropts["destdir"])
-            creator.create_manifest()
+            creator.package(creatoropts["outdir"])
 
             if creatoropts['release'] is not None:
                 creator.release_output(ksconf,
-                                       creatoropts['destdir'],
+                                       creatoropts['outdir'],
                                        creatoropts['release'])
             creator.print_outimage_info()
 
@@ -140,7 +134,7 @@ class LoopPlugin(ImagerPlugin):
         return 0
 
     @classmethod
-    def _do_chroot_tar(cls, target, cmd=[]):
+    def _do_chroot_tar(cls, target):
         mountfp_xml = os.path.splitext(target)[0] + '.xml'
         if not os.path.exists(mountfp_xml):
             raise errors.CreatorError("No mount point file found for this tar "
@@ -163,7 +157,7 @@ class LoopPlugin(ImagerPlugin):
             elif fstype in ("vfat", "msdos"):
                 myDiskMount = fs_related.VfatDiskMount
             else:
-                raise errors.CreatorError("Cannot support fstype: %s" % fstype)
+                msger.error("Cannot support fstype: %s" % fstype)
 
             name = os.path.join(tmpdir, name)
             size = size * 1024L * 1024L
@@ -187,11 +181,7 @@ class LoopPlugin(ImagerPlugin):
             loops.append(loop)
 
         try:
-            if len(cmd) != 0:
-                cmdline = "/usr/bin/env HOME=/root " + ' '.join(cmd)
-            else:
-                cmdline = "/usr/bin/env HOME=/root /bin/bash"
-            chroot.chroot(mntdir, None, cmdline)
+            chroot.chroot(mntdir, None, "/usr/bin/env HOME=/root /bin/bash")
         except:
             raise errors.CreatorError("Failed to chroot to %s." % target)
         finally:
@@ -201,11 +191,11 @@ class LoopPlugin(ImagerPlugin):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     @classmethod
-    def do_chroot(cls, target, cmd=[]):
+    def do_chroot(cls, target):
         if target.endswith('.tar'):
             import tarfile
             if tarfile.is_tarfile(target):
-                LoopPlugin._do_chroot_tar(target, cmd)
+                LoopPlugin._do_chroot_tar(target)
                 return
             else:
                 raise errors.CreatorError("damaged tarball for loop images")
@@ -238,13 +228,11 @@ class LoopPlugin(ImagerPlugin):
             raise
 
         try:
-            if len(cmd) != 0:
-                cmdline = ' '.join(cmd)
-            else:
-                cmdline = "/bin/bash"
             envcmd = fs_related.find_binary_inchroot("env", extmnt)
             if envcmd:
-                cmdline = "%s HOME=/root %s" % (envcmd, cmdline)
+                cmdline = "%s HOME=/root /bin/bash" % envcmd
+            else:
+                cmdline = "/bin/bash"
             chroot.chroot(extmnt, None, cmdline)
         except:
             raise errors.CreatorError("Failed to chroot to %s." % img)

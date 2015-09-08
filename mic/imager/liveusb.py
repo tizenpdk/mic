@@ -23,12 +23,9 @@ from mic import msger
 from mic.utils import misc, fs_related, runner
 from mic.utils.errors import CreatorError, MountError
 from mic.utils.partitionedfs import PartitionedMount
-from mic.imager.livecd import LiveCDImageCreator
 
-
+from livecd import LiveCDImageCreator
 class LiveUSBImageCreator(LiveCDImageCreator):
-    img_format = 'liveusb'
-
     def __init__(self, *args):
         LiveCDImageCreator.__init__(self, *args)
 
@@ -73,8 +70,7 @@ class LiveUSBImageCreator(LiveCDImageCreator):
                                                  % (self._outdir, self.name),
                                              usbimgsize)
         usbmnt = self._mkdtemp("usb-mnt")
-        usbloop = PartitionedMount(usbmnt)
-        usbloop.add_disk('/dev/sdb', disk)
+        usbloop = PartitionedMount({'/dev/sdb':disk}, usbmnt)
 
         usbloop.add_partition(usbimgsize/1024/1024,
                               "/dev/sdb",
@@ -101,8 +97,8 @@ class LiveUSBImageCreator(LiveCDImageCreator):
             if fstype == "vfat" or fstype == "msdos":
                 uuid = usbloop.partitions[0]['mount'].uuid
                 label = usbloop.partitions[0]['mount'].fslabel
-                usblabel = "UUID=%s" % (uuid)
-                overlaysuffix = "-%s-%s" % (label, uuid)
+                usblabel = "UUID=%s-%s" % (uuid[0:4], uuid[4:8])
+                overlaysuffix = "-%s-%s-%s" % (label, uuid[0:4], uuid[4:8])
             else:
                 diskmount = usbloop.partitions[0]['mount']
                 usblabel = "UUID=%s" % diskmount.uuid
@@ -141,7 +137,7 @@ class LiveUSBImageCreator(LiveCDImageCreator):
             pattern = re.compile('rootfstype=[^ ]*')
             text = pattern.sub("rootfstype=" + fstype, text)
             if kernelargs:
-                text = text.replace("rd.live.image", "rd.live.image " + kernelargs)
+                text = text.replace("liveimg", "liveimg " + kernelargs)
 
             if overlaysizemb > 0:
                 msger.info("Initializing persistent overlay file")
@@ -162,7 +158,7 @@ class LiveUSBImageCreator(LiveCDImageCreator):
                 rc = runner.show(args)
                 if rc:
                     raise CreatorError("Can't create overlay file")
-                text = text.replace("rd.live.image", "rd.live.image rd.live.overlay=" + usblabel)
+                text = text.replace("liveimg", "liveimg overlay=" + usblabel)
                 text = text.replace(" ro ", " rw ")
 
             if swapsizemb > 0:
@@ -218,7 +214,7 @@ class LiveUSBImageCreator(LiveCDImageCreator):
                             homefile]
                     rc = runner.show(args)
                     if rc:
-                        raise CreatorError("Can't tune2fs home file")
+                         raise CreatorError("Can't tune2fs home file")
 
             if fstype == "vfat" or fstype == "msdos":
                 syslinuxcmd = fs_related.find_binary_path("syslinux")
@@ -299,13 +295,10 @@ class LiveUSBImageCreator(LiveCDImageCreator):
                 self._create_usbimg(isodir)
 
                 if self.pack_to:
-                    self.image_files.update({'image_files': self.pack_to})
                     usbimg = os.path.join(self._outdir, self.name + ".usbimg")
                     packimg = os.path.join(self._outdir, self.pack_to)
                     misc.packing(packimg, usbimg)
                     os.unlink(usbimg)
-                else:
-                    self.image_files.update({'image_files': self.name + ".usbimg"})
 
         finally:
             shutil.rmtree(isodir, ignore_errors = True)

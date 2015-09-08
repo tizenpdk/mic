@@ -15,16 +15,84 @@
 # with this program; if not, write to the Free Software Foundation, Inc., 59
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
-import os
-import sys
-import re
+import os, sys, re
+import fcntl
+import struct
+import termios
 import rpm
-
 from mic import msger
-from mic.utils.errors import CreatorError
-from mic.utils.proxy import get_proxy_for
-from mic.utils import runner
+from .errors import CreatorError
+from .proxy import get_proxy_for
+import runner
+from urlgrabber import grabber, __version__ as grabber_version
+if rpm.labelCompare(grabber_version.split('.'), '3.9.0'.split('.')) == -1:
+    msger.warning("Version of python-urlgrabber is %s, lower than '3.9.0', "
+                  "you may encounter some network issues" % grabber_version)
 
+def myurlgrab(url, filename, proxies, progress_obj = None):
+    g = grabber.URLGrabber()
+    if progress_obj is None:
+        progress_obj = TextProgress()
+
+    if url.startswith("file:/"):
+        file = url.replace("file:", "")
+        if not os.path.exists(file):
+            raise CreatorError("URLGrabber error: can't find file %s" % file)
+        runner.show(['cp', "-f", file, filename])
+    else:
+        try:
+            filename = g.urlgrab(url = url, filename = filename,
+                ssl_verify_host = False, ssl_verify_peer = False,
+                proxies = proxies, http_headers = (('Pragma', 'no-cache'),),
+                quote = 0, progress_obj = progress_obj)
+        except grabber.URLGrabError, e:
+            raise CreatorError("URLGrabber error: %s" % url)
+
+    return filename
+
+def terminal_width(fd=1):
+    """ Get the real terminal width """
+    try:
+        buf = 'abcdefgh'
+        buf = fcntl.ioctl(fd, termios.TIOCGWINSZ, buf)
+        return struct.unpack('hhhh', buf)[1]
+    except: # IOError
+        return 80
+
+def truncate_url(url, width):
+    return os.path.basename(url)[0:width]
+
+class TextProgress(object):
+    # make the class as singleton
+    _instance = None
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(TextProgress, cls).__new__(cls, *args, **kwargs)
+
+        return cls._instance
+
+    def __init__(self, totalnum = None):
+        self.total = totalnum
+        self.counter = 1
+
+    def start(self, filename, url, *args, **kwargs):
+        self.url = url
+        self.termwidth = terminal_width()
+        msger.info("\r%-*s" % (self.termwidth, " "))
+        if self.total is None:
+            msger.info("\rRetrieving %s ..." % truncate_url(self.url, self.termwidth - 15))
+        else:
+            msger.info("\rRetrieving %s [%d/%d] ..." % (truncate_url(self.url, self.termwidth - 25), self.counter, self.total))
+
+    def update(self, *args):
+        pass
+
+    def end(self, *args):
+        if self.counter == self.total:
+            msger.raw("\n")
+
+        if self.total is not None:
+            self.counter += 1
 
 class RPMInstallCallback:
     """ Command line callback class for callbacks from the RPM library.
@@ -35,7 +103,6 @@ class RPMInstallCallback:
         self.callbackfilehandles = {}
         self.total_actions = 0
         self.total_installed = 0
-        self.total_installing = 0
         self.installed_pkg_names = []
         self.total_removed = 0
         self.mark = "+"
@@ -68,17 +135,17 @@ class RPMInstallCallback:
         l = len(str(self.total_actions))
         size = "%s.%s" % (l, l)
         fmt_done = "[%" + size + "s/%" + size + "s]"
-        done = fmt_done % (self.total_installing,
+        done = fmt_done % (self.total_installed + self.total_removed,
                            self.total_actions)
         marks = self.marks - (2 * l)
         width = "%s.%s" % (marks, marks)
         fmt_bar = "%-" + width + "s"
         if progress:
             bar = fmt_bar % (self.mark * int(marks * (percent / 100.0)), )
-            fmt = "%-10.10s: %-20.20s " + bar + " " + done
+            fmt = "\r  %-10.10s: %-20.20s " + bar + " " + done
         else:
             bar = fmt_bar % (self.mark * marks, )
-            fmt = "%-10.10s: %-20.20s "  + bar + " " + done
+            fmt = "  %-10.10s: %-20.20s "  + bar + " " + done
         return fmt
 
     def _logPkgString(self, hdr):
@@ -115,9 +182,8 @@ class RPMInstallCallback:
                 handle = self._makeHandle(hdr)
                 fd = os.open(rpmloc, os.O_RDONLY)
                 self.callbackfilehandles[handle]=fd
-                if hdr['name'] not in self.installed_pkg_names:
-                    self.installed_pkg_names.append(hdr['name'])
-                    self.total_installed += 1
+                self.total_installed += 1
+                self.installed_pkg_names.append(hdr['name'])
                 return fd
             else:
                 self._localprint("No header - huh?")
@@ -138,12 +204,6 @@ class RPMInstallCallback:
                 # log stuff
                 #pkgtup = self._dopkgtup(hdr)
                 self.logString.append(self._logPkgString(hdr))
-
-        elif what == rpm.RPMCALLBACK_INST_START:
-            self.total_installing += 1
-
-        elif what == rpm.RPMCALLBACK_UNINST_STOP:
-            pass
 
         elif what == rpm.RPMCALLBACK_INST_PROGRESS:
             if h is not None:
@@ -291,7 +351,6 @@ archPolicies = {
     "i686":         "i686:i586:i486:i386",
     "i586":         "i586:i486:i386",
     "ia64":         "ia64:i686:i586:i486:i386",
-    "aarch64":      "aarch64",
     "armv7tnhl":    "armv7tnhl:armv7thl:armv7nhl:armv7hl",
     "armv7thl":     "armv7thl:armv7hl",
     "armv7nhl":     "armv7nhl:armv7hl",
@@ -438,3 +497,171 @@ def getSigInfo(hdr):
     infotuple = (sigtype, sigdate, sigid)
     return error, infotuple
 
+def checkRepositoryEULA(name, repo):
+    """ This function is to check the EULA file if provided.
+        return True: no EULA or accepted
+        return False: user declined the EULA
+    """
+
+    import tempfile
+    import shutil
+    import urlparse
+    import urllib2 as u2
+    import httplib
+    from errors import CreatorError
+
+    def _check_and_download_url(u2opener, url, savepath):
+        try:
+            if u2opener:
+                f = u2opener.open(url)
+            else:
+                f = u2.urlopen(url)
+        except u2.HTTPError, httperror:
+            if httperror.code in (404, 503):
+                return None
+            else:
+                raise CreatorError(httperror)
+        except OSError, oserr:
+            if oserr.errno == 2:
+                return None
+            else:
+                raise CreatorError(oserr)
+        except IOError, oserr:
+            if hasattr(oserr, "reason") and oserr.reason.errno == 2:
+                return None
+            else:
+                raise CreatorError(oserr)
+        except u2.URLError, err:
+            raise CreatorError(err)
+        except httplib.HTTPException, e:
+            raise CreatorError(e)
+
+        # save to file
+        licf = open(savepath, "w")
+        licf.write(f.read())
+        licf.close()
+        f.close()
+
+        return savepath
+
+    def _pager_file(savepath):
+
+        if os.path.splitext(savepath)[1].upper() in ('.HTM', '.HTML'):
+            pagers = ('w3m', 'links', 'lynx', 'less', 'more')
+        else:
+            pagers = ('less', 'more')
+
+        file_showed = False
+        for pager in pagers:
+            cmd = "%s %s" % (pager, savepath)
+            try:
+                os.system(cmd)
+            except OSError:
+                continue
+            else:
+                file_showed = True
+                break
+
+        if not file_showed:
+            f = open(savepath)
+            msger.raw(f.read())
+            f.close()
+            msger.pause()
+
+    # when proxy needed, make urllib2 follow it
+    proxy = repo.proxy
+    proxy_username = repo.proxy_username
+    proxy_password = repo.proxy_password
+
+    if not proxy:
+        proxy = get_proxy_for(repo.baseurl[0])
+
+    handlers = []
+    auth_handler = u2.HTTPBasicAuthHandler(u2.HTTPPasswordMgrWithDefaultRealm())
+    u2opener = None
+    if proxy:
+        if proxy_username:
+            proxy_netloc = urlparse.urlsplit(proxy).netloc
+            if proxy_password:
+                proxy_url = 'http://%s:%s@%s' % (proxy_username, proxy_password, proxy_netloc)
+            else:
+                proxy_url = 'http://%s@%s' % (proxy_username, proxy_netloc)
+        else:
+            proxy_url = proxy
+
+        proxy_support = u2.ProxyHandler({'http': proxy_url,
+                                         'https': proxy_url,
+                                         'ftp': proxy_url})
+        handlers.append(proxy_support)
+
+    # download all remote files to one temp dir
+    baseurl = None
+    repo_lic_dir = tempfile.mkdtemp(prefix = 'repolic')
+
+    for url in repo.baseurl:
+        tmphandlers = handlers[:]
+
+        (scheme, host, path, parm, query, frag) = urlparse.urlparse(url.rstrip('/') + '/')
+        if scheme not in ("http", "https", "ftp", "ftps", "file"):
+            raise CreatorError("Error: invalid url %s" % url)
+
+        if '@' in host:
+            try:
+                user_pass, host = host.split('@', 1)
+                if ':' in user_pass:
+                    user, password = user_pass.split(':', 1)
+            except ValueError, e:
+                raise CreatorError('Bad URL: %s' % url)
+
+            msger.verbose("adding HTTP auth: %s, %s" %(user, password))
+            auth_handler.add_password(None, host, user, password)
+            tmphandlers.append(auth_handler)
+            url = scheme + "://" + host + path + parm + query + frag
+
+        if tmphandlers:
+            u2opener = u2.build_opener(*tmphandlers)
+
+        # try to download
+        repo_eula_url = urlparse.urljoin(url, "LICENSE.txt")
+        repo_eula_path = _check_and_download_url(
+                                u2opener,
+                                repo_eula_url,
+                                os.path.join(repo_lic_dir, repo.id + '_LICENSE.txt'))
+        if repo_eula_path:
+            # found
+            baseurl = url
+            break
+
+    if not baseurl:
+        shutil.rmtree(repo_lic_dir) #cleanup
+        return True
+
+    # show the license file
+    msger.info('For the software packages in this yum repo:')
+    msger.info('    %s: %s' % (name, baseurl))
+    msger.info('There is an "End User License Agreement" file that need to be checked.')
+    msger.info('Please read the terms and conditions outlined in it and answer the followed qustions.')
+    msger.pause()
+
+    _pager_file(repo_eula_path)
+
+    # Asking for the "Accept/Decline"
+    if not msger.ask('Would you agree to the terms and conditions outlined in the above End User License Agreement?'):
+        msger.warning('Will not install pkgs from this repo.')
+        shutil.rmtree(repo_lic_dir) #cleanup
+        return False
+
+    # try to find support_info.html for extra infomation
+    repo_info_url = urlparse.urljoin(baseurl, "support_info.html")
+    repo_info_path = _check_and_download_url(
+                            u2opener,
+                            repo_info_url,
+                            os.path.join(repo_lic_dir, repo.id + '_support_info.html'))
+    if repo_info_path:
+        msger.info('There is one more file in the repo for additional support information, please read it')
+        msger.pause()
+        _pager_file(repo_info_path)
+
+    #cleanup
+    shutil.rmtree(repo_lic_dir)
+    return True

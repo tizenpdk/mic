@@ -25,12 +25,11 @@ if not hasattr(zypp, 'PoolQuery') or \
    not hasattr(zypp.RepoManager, 'loadSolvFile'):
     raise ImportError("python-zypp in host system cannot support PoolQuery or "
                       "loadSolvFile interface, please update it to enhanced "
-                      "version which can be found in download.tizen.org/tools")
+                      "version which can be found in repo.meego.com/tools")
 
 from mic import msger
 from mic.kickstart import ksparser
 from mic.utils import misc, rpmmisc, runner, fs_related
-from mic.utils.grabber import myurlgrab, TextProgress
 from mic.utils.proxy import get_proxy_for
 from mic.utils.errors import CreatorError, RepoError, RpmError
 from mic.imager.baseimager import BaseImageCreator
@@ -43,7 +42,6 @@ class RepositoryStub:
         self.proxy = None
         self.proxy_username = None
         self.proxy_password = None
-        self.nocache = False
 
         self.enabled = True
         self.autorefresh = True
@@ -61,7 +59,6 @@ class Zypp(BackendPlugin):
 
         self.__pkgs_license = {}
         self.__pkgs_content = {}
-        self.__pkgs_vcsinfo = {}
         self.repos = []
         self.to_deselect = []
         self.localpkgs = {}
@@ -73,14 +70,10 @@ class Zypp(BackendPlugin):
         self.incpkgs = {}
         self.excpkgs = {}
         self.pre_pkgs = []
-        self.check_pkgs = []
         self.probFilterFlags = [ rpm.RPMPROB_FILTER_OLDPACKAGE,
                                  rpm.RPMPROB_FILTER_REPLACEPKG ]
 
         self.has_prov_query = True
-        self.install_debuginfo = False
-        # this can't be changed, it is used by zypp
-        self.tmp_file_path = '/var/tmp'
 
     def doFileLogSetup(self, uid, logfile):
         # don't do the file log for the livecd as it can lead to open fds
@@ -101,6 +94,14 @@ class Zypp(BackendPlugin):
 
         self.closeRpmDB()
 
+        if not os.path.exists("/etc/fedora-release") and \
+           not os.path.exists("/etc/meego-release"):
+            for i in range(3, os.sysconf("SC_OPEN_MAX")):
+                try:
+                    os.close(i)
+                except:
+                    pass
+
     def __del__(self):
         self.close()
 
@@ -111,32 +112,13 @@ class Zypp(BackendPlugin):
         for f in glob.glob(installroot + "/var/lib/rpm/__db*"):
             os.unlink(f)
 
-    def _cleanupZyppJunk(self, installroot):
-        try:
-            shutil.rmtree(os.path.join(installroot, '.zypp'))
-        except:
-            pass
-
     def setup(self):
         self._cleanupRpmdbLocks(self.instroot)
-        # '/var/tmp' is used by zypp to build cache, so make sure
-        # if it exists
-        if not os.path.exists(self.tmp_file_path ):
-            os.makedirs(self.tmp_file_path)
 
     def whatObsolete(self, pkg):
         query = zypp.PoolQuery()
         query.addKind(zypp.ResKind.package)
-        query.addDependency(zypp.SolvAttr.obsoletes, pkg.name(), pkg.edition())
-        query.setMatchExact()
-        for pi in query.queryResults(self.Z.pool()):
-            return pi
-        return None
-
-    def _zyppQueryPackage(self, pkg):
-        query = zypp.PoolQuery()
-        query.addKind(zypp.ResKind.package)
-        query.addAttribute(zypp.SolvAttr.name,pkg)
+        query.addAttribute(zypp.SolvAttr.obsoletes, pkg)
         query.setMatchExact()
         for pi in query.queryResults(self.Z.pool()):
             return pi
@@ -168,27 +150,7 @@ class Zypp(BackendPlugin):
             else:
                 obs.status().setToBeInstalled (zypp.ResStatus.USER)
 
-        def cmpEVR(p1, p2):
-            # compare criterion: arch compatibility first, then repo
-            # priority, and version last
-            a1 = p1.arch()
-            a2 = p2.arch()
-            if str(a1) != str(a2):
-                if a1.compatible_with(a2):
-                    return -1
-                else:
-                    return 1
-            # Priority of a repository is an integer value between 0 (the
-            # highest priority) and 99 (the lowest priority)
-            pr1 = int(p1.repoInfo().priority())
-            pr2 = int(p2.repoInfo().priority())
-            if pr1 > pr2:
-                return -1
-            elif pr1 < pr2:
-                return 1
-
-            ed1 = p1.edition()
-            ed2 = p2.edition()
+        def cmpEVR(ed1, ed2):
             (e1, v1, r1) = map(str, [ed1.epoch(), ed1.version(), ed1.release()])
             (e2, v2, r2) = map(str, [ed2.epoch(), ed2.version(), ed2.release()])
             return rpm.labelCompare((e1, v1, r1), (e2, v2, r2))
@@ -220,11 +182,11 @@ class Zypp(BackendPlugin):
             q.setMatchExact()
             q.addAttribute(zypp.SolvAttr.name,pkg)
 
-        for pitem in sorted(
+        for item in sorted(
                         q.queryResults(self.Z.pool()),
-                        cmp=lambda x,y: cmpEVR(zypp.asKindPackage(x), zypp.asKindPackage(y)),
+                        cmp=lambda x,y: cmpEVR(x.edition(), y.edition()),
                         reverse=True):
-            item = zypp.asKindPackage(pitem)
+
             if item.name() in self.excpkgs.keys() and \
                self.excpkgs[item.name()] == item.repoInfo().name():
                 continue
@@ -233,12 +195,12 @@ class Zypp(BackendPlugin):
                 continue
 
             found = True
-            obspkg = self.whatObsolete(item)
+            obspkg = self.whatObsolete(item.name())
             if arch:
                 if arch == str(item.arch()):
                     item.status().setToBeInstalled (zypp.ResStatus.USER)
             else:
-                markPoolItem(obspkg, pitem)
+                markPoolItem(obspkg, item)
             if not ispattern:
                 break
 
@@ -248,11 +210,10 @@ class Zypp(BackendPlugin):
             q.addAttribute(zypp.SolvAttr.provides, pkg)
             q.addAttribute(zypp.SolvAttr.name,'')
 
-            for pitem in sorted(
+            for item in sorted(
                             q.queryResults(self.Z.pool()),
-                            cmp=lambda x,y: cmpEVR(zypp.asKindPackage(x), zypp.asKindPackage(y)),
+                            cmp=lambda x,y: cmpEVR(x.edition(), y.edition()),
                             reverse=True):
-                item = zypp.asKindPackage(pitem)
                 if item.name() in self.excpkgs.keys() and \
                    self.excpkgs[item.name()] == item.repoInfo().name():
                     continue
@@ -261,8 +222,8 @@ class Zypp(BackendPlugin):
                     continue
 
                 found = True
-                obspkg = self.whatObsolete(item)
-                markPoolItem(obspkg, pitem)
+                obspkg = self.whatObsolete(item.name())
+                markPoolItem(obspkg, item)
                 break
 
         if found:
@@ -270,10 +231,10 @@ class Zypp(BackendPlugin):
         else:
             raise CreatorError("Unable to find package: %s" % (pkg,))
 
-    def inDeselectPackages(self, pitem):
+    def inDeselectPackages(self, item):
         """check if specified pacakges are in the list of inDeselectPackages
         """
-        item = zypp.asKindPackage(pitem)
+
         name = item.name()
         for pkg in self.to_deselect:
             startx = pkg.startswith("*")
@@ -289,9 +250,9 @@ class Zypp(BackendPlugin):
                         return True;
             else:
                 if startx and name.endswith(pkg[1:]):
-                    return True;
+                        return True;
                 if endx and name.startswith(pkg[:-1]):
-                    return True;
+                        return True;
 
         return False;
 
@@ -305,13 +266,12 @@ class Zypp(BackendPlugin):
         found = False
         q=zypp.PoolQuery()
         q.addKind(zypp.ResKind.pattern)
-        for pitem in q.queryResults(self.Z.pool()):
-            item = zypp.asKindPattern(pitem)
+        for item in q.queryResults(self.Z.pool()):
             summary = "%s" % item.summary()
             name = "%s" % item.name()
             if name == grp or summary == grp:
                 found = True
-                pitem.status().setToBeInstalled (zypp.ResStatus.USER)
+                item.status().setToBeInstalled (zypp.ResStatus.USER)
                 break
 
         if found:
@@ -333,7 +293,6 @@ class Zypp(BackendPlugin):
                             inc = None,
                             exc = None,
                             ssl_verify = True,
-                            nocache = False,
                             cost=None,
                             priority=None):
         # TODO: Handle cost attribute for repos
@@ -351,7 +310,6 @@ class Zypp(BackendPlugin):
         repo.proxy_username = proxy_username
         repo.proxy_password = proxy_password
         repo.ssl_verify = ssl_verify
-        repo.nocache = nocache
         repo.baseurl.append(url)
         if inc:
             for pkg in inc:
@@ -360,14 +318,18 @@ class Zypp(BackendPlugin):
             for pkg in exc:
                 self.excpkgs[pkg] = name
 
+        # check LICENSE files
+        if not rpmmisc.checkRepositoryEULA(name, repo):
+            msger.warning('skip repo:%s for failed EULA confirmation' % name)
+            return None
+
         if mirrorlist:
             repo.mirrorlist = mirrorlist
 
         # Enable gpg check for verifying corrupt packages
         repo.gpgcheck = 1
-        if priority is not None:
-            # priority 0 has issue in RepoInfo.setPriority
-            repo.priority = priority + 1
+        if priority:
+            repo.priority = priority
 
         try:
             repo_info = zypp.RepoInfo()
@@ -376,13 +338,13 @@ class Zypp(BackendPlugin):
             repo_info.setEnabled(repo.enabled)
             repo_info.setAutorefresh(repo.autorefresh)
             repo_info.setKeepPackages(repo.keeppackages)
-            baseurl = zypp.Url(repo.baseurl[0].full)
+            baseurl = zypp.Url(repo.baseurl[0])
             if not ssl_verify:
                 baseurl.setQueryParam("ssl_verify", "no")
             if proxy:
                 scheme, host, path, parm, query, frag = urlparse.urlparse(proxy)
 
-                proxyinfo = host.rsplit(":", 1)
+                proxyinfo = host.split(":")
                 host = proxyinfo[0]
 
                 port = "80"
@@ -393,53 +355,18 @@ class Zypp(BackendPlugin):
                     host = proxy.rsplit(':', 1)[0]
                     port = proxy.rsplit(':', 1)[1]
 
-                # parse user/pass from proxy host
-                proxyinfo = host.rsplit("@", 1)
-                if len(proxyinfo) == 2:
-                    host = proxyinfo[1]
-                    # Known Issue: If password contains ":", which should be
-                    # quoted, for example, use '123%3Aabc' instead of 123:abc
-                    userpassinfo = proxyinfo[0].rsplit(":", 1)
-                    if len(userpassinfo) == 2:
-                        proxy_username = userpassinfo[0]
-                        proxy_password = userpassinfo[1]
-                    elif len(userpassinfo) == 1:
-                        proxy_username = userpassinfo[0]
-
                 baseurl.setQueryParam ("proxy", host)
                 baseurl.setQueryParam ("proxyport", port)
-                if proxy_username:
-                    baseurl.setQueryParam ("proxyuser", proxy_username)
-                if proxy_password:
-                    baseurl.setQueryParam ("proxypass", proxy_password)
-            else:
-                baseurl.setQueryParam ("proxy", "_none_")
 
+            repo.baseurl[0] = baseurl.asCompleteString()
             self.repos.append(repo)
 
             repo_info.addBaseUrl(baseurl)
 
-            if repo.priority is not None:
+            if repo.priority:
                 repo_info.setPriority(repo.priority)
 
-            # this hack is used to change zypp credential file location
-            # the default one is $HOME/.zypp, which cause conflicts when
-            # installing some basic packages, and the location doesn't
-            # have any interface actually, so use a tricky way anyway
-            homedir = None
-            if 'HOME' in os.environ:
-                homedir = os.environ['HOME']
-                os.environ['HOME'] = '/'
-            else:
-                os.environ['HOME'] = '/'
-
             self.repo_manager.addRepository(repo_info)
-
-            # save back the $HOME env
-            if homedir:
-                os.environ['HOME'] = homedir
-            else:
-                del os.environ['HOME']
 
             self.__build_repo_cache(name)
 
@@ -455,9 +382,6 @@ class Zypp(BackendPlugin):
     def preInstall(self, pkg):
         self.pre_pkgs.append(pkg)
 
-    def checkPackage(self, pkg):
-        self.check_pkgs.append(pkg)
-
     def runInstall(self, checksize = 0):
         os.environ["HOME"] = "/"
         os.environ["LD_PRELOAD"] = ""
@@ -466,29 +390,10 @@ class Zypp(BackendPlugin):
         todo = zypp.GetResolvablesToInsDel(self.Z.pool())
         installed_pkgs = todo._toInstall
         dlpkgs = []
-
-        for pitem in installed_pkgs:
-            if not zypp.isKindPattern(pitem) and \
-              not self.inDeselectPackages(pitem):
-                item = zypp.asKindPackage(pitem)
+        for item in installed_pkgs:
+            if not zypp.isKindPattern(item) and \
+               not self.inDeselectPackages(item):
                 dlpkgs.append(item)
-
-                if item.name() in self.check_pkgs:
-                    self.check_pkgs.remove(item.name())
-
-                if not self.install_debuginfo or str(item.arch()) == "noarch":
-                    continue
-
-                dipkg = self._zyppQueryPackage("%s-debuginfo" % item.name())
-                if dipkg:
-                    ditem = zypp.asKindPackage(dipkg)
-                    dlpkgs.append(ditem)
-                else:
-                    msger.warning("No debuginfo rpm found for: %s" \
-                                  % item.name())
-
-        if self.check_pkgs:
-            raise CreatorError('Packages absent in image: %s' % ','.join(self.check_pkgs))
 
         # record all pkg and the content
         localpkgs = self.localpkgs.keys()
@@ -499,8 +404,8 @@ class Zypp(BackendPlugin):
                 pkg_long_name = misc.RPM_FMT % {
                                     'name': hdr['name'],
                                     'arch': hdr['arch'],
-                                    'version': hdr['version'],
-                                    'release': hdr['release']
+                                    'ver_rel': '%s-%s' % (hdr['version'],
+                                                          hdr['release']),
                                 }
                 license = hdr['license']
 
@@ -508,11 +413,13 @@ class Zypp(BackendPlugin):
                 pkg_long_name = misc.RPM_FMT % {
                                     'name': pkg.name(),
                                     'arch': pkg.arch(),
-                                    'version': pkg.edition().version(),
-                                    'release': pkg.edition().release()
+                                    'ver_rel': pkg.edition(),
                                 }
 
-                license = pkg.license()
+                package = zypp.asKindPackage(pkg)
+                license = package.license()
+
+            self.__pkgs_content[pkg_long_name] = {} #TBD: to get file list
 
             if license in self.__pkgs_license.keys():
                 self.__pkgs_license[license].append(pkg_long_name)
@@ -524,22 +431,15 @@ class Zypp(BackendPlugin):
         download_total_size = sum(map(lambda x: int(x.downloadSize()), dlpkgs))
         localpkgs = self.localpkgs.keys()
 
-        msger.info("Checking packages cached ...")
+        msger.info("Checking packages cache and packages integrity ...")
         for po in dlpkgs:
             # Check if it is cached locally
             if po.name() in localpkgs:
                 cached_count += 1
             else:
                 local = self.getLocalPkgPath(po)
-                name = str(po.repoInfo().name())
-                try:
-                    repo = filter(lambda r: r.name == name, self.repos)[0]
-                except IndexError:
-                    repo = None
-                nocache = repo.nocache if repo else False
-
                 if os.path.exists(local):
-                    if nocache or self.checkPkg(local) !=0:
+                    if self.checkPkg(local) != 0:
                         os.unlink(local)
                     else:
                         download_total_size -= int(po.downloadSize())
@@ -559,7 +459,9 @@ class Zypp(BackendPlugin):
         #                       "please resize partition size in ks file")
 
         download_count =  total_count - cached_count
-        msger.info("Packages: %d Total, %d Cached, %d Missed" \
+        msger.info("%d packages to be installed, "
+                   "%d packages gotten from cache, "
+                   "%d packages to be downloaded" \
                    % (total_count, cached_count, download_count))
 
         try:
@@ -574,46 +476,7 @@ class Zypp(BackendPlugin):
         except Exception, e:
             raise CreatorError("Package installation failed: %s" % (e,))
 
-    def getVcsInfo(self):
-        if self.__pkgs_vcsinfo:
-            return
-
-        if not self.ts:
-            self.__initialize_transaction()
-
-        mi = self.ts.dbMatch()
-        for hdr in mi:
-            lname = misc.RPM_FMT % {
-                        'name': hdr['name'],
-                        'arch': hdr['arch'],
-                        'version': hdr['version'],
-                        'release': hdr['release']
-                    }
-            try:
-                self.__pkgs_vcsinfo[lname] = hdr['VCS']
-            except ValueError:
-                # if rpm not support VCS, set to None
-                self.__pkgs_vcsinfo[lname] = None
-
-        return self.__pkgs_vcsinfo
-
     def getAllContent(self):
-        if self.__pkgs_content:
-            return self.__pkgs_content
-
-        if not self.ts:
-            self.__initialize_transaction()
-
-        mi = self.ts.dbMatch()
-        for hdr in mi:
-            lname = misc.RPM_FMT % {
-                        'name': hdr['name'],
-                        'arch': hdr['arch'],
-                        'version': hdr['version'],
-                        'release': hdr['release']
-                    }
-            self.__pkgs_content[lname] = hdr['FILENAMES']
-
         return self.__pkgs_content
 
     def getPkgsLicense(self):
@@ -712,7 +575,7 @@ class Zypp(BackendPlugin):
     def getLocalPkgPath(self, po):
         repoinfo = po.repoInfo()
         cacheroot = repoinfo.packagesPath()
-        location= po.location()
+        location= zypp.asKindPackage(po).location()
         rpmpath = str(location.filename())
         pkgpath = "%s/%s" % (cacheroot, os.path.basename(rpmpath))
         return pkgpath
@@ -756,7 +619,7 @@ class Zypp(BackendPlugin):
 
     def downloadPkgs(self, package_objects, count):
         localpkgs = self.localpkgs.keys()
-        progress_obj = TextProgress(count)
+        progress_obj = rpmmisc.TextProgress(count)
 
         for po in package_objects:
             if po.name() in localpkgs:
@@ -775,7 +638,10 @@ class Zypp(BackendPlugin):
             proxies = self.get_proxies(po)
 
             try:
-                filename = myurlgrab(url.full, filename, proxies, progress_obj)
+                filename = rpmmisc.myurlgrab(url,
+                                             filename,
+                                             proxies,
+                                             progress_obj)
             except CreatorError:
                 self.close()
                 raise
@@ -812,9 +678,6 @@ class Zypp(BackendPlugin):
         if not self.ts:
             self.__initialize_transaction()
 
-        # clean rpm lock
-        self._cleanupRpmdbLocks(self.instroot)
-        self._cleanupZyppJunk(self.instroot)
         # Set filters
         probfilter = 0
         for flag in self.probFilterFlags:
@@ -833,9 +696,14 @@ class Zypp(BackendPlugin):
 
             if not os.path.exists(rpmpath):
                 # Maybe it is a local repo
-                rpmuri = self.get_url(po)
-                if rpmuri.startswith("file:/"):
-                    rpmpath = rpmuri[5:]
+                baseurl = str(po.repoInfo().baseUrls()[0])
+                baseurl = baseurl.strip()
+
+                location = zypp.asKindPackage(po).location()
+                location = str(location.filename())
+
+                if baseurl.startswith("file:/"):
+                    rpmpath = baseurl[5:] + "/%s" % (location)
 
             if not os.path.exists(rpmpath):
                 raise RpmError("Error: %s doesn't exist" % rpmpath)
@@ -924,8 +792,8 @@ class Zypp(BackendPlugin):
 
     def _add_prob_flags(self, *flags):
         for flag in flags:
-            if flag not in self.probFilterFlags:
-                self.probFilterFlags.append(flag)
+           if flag not in self.probFilterFlags:
+               self.probFilterFlags.append(flag)
 
     def get_proxies(self, pobj):
         if not pobj:
@@ -957,18 +825,22 @@ class Zypp(BackendPlugin):
         except IndexError:
             return None
 
-        location = pobj.location()
+        baseurl = repo.baseurl[0]
+
+        index = baseurl.find("?")
+        if index > -1:
+            baseurl = baseurl[:index]
+
+        location = zypp.asKindPackage(pobj).location()
         location = str(location.filename())
         if location.startswith("./"):
             location = location[2:]
 
-        return repo.baseurl[0].join(location)
+        return os.path.join(baseurl, location)
 
     def package_url(self, pkgname):
 
-        def cmpEVR(p1, p2):
-            ed1 = p1.edition()
-            ed2 = p2.edition()
+        def cmpEVR(ed1, ed2):
             (e1, v1, r1) = map(str, [ed1.epoch(), ed1.version(), ed1.release()])
             (e2, v2, r2) = map(str, [ed2.epoch(), ed2.version(), ed2.release()])
             return rpm.labelCompare((e1, v1, r1), (e2, v2, r2))
@@ -981,13 +853,12 @@ class Zypp(BackendPlugin):
         q.setMatchExact()
         q.addAttribute(zypp.SolvAttr.name, pkgname)
         items = sorted(q.queryResults(self.Z.pool()),
-                       cmp=lambda x,y: cmpEVR(zypp.asKindPackage(x), zypp.asKindPackage(y)),
+                       cmp=lambda x,y: cmpEVR(x.edition(), y.edition()),
                        reverse=True)
 
         if items:
-            item = zypp.asKindPackage(items[0])
-            url = self.get_url(item)
-            proxies = self.get_proxies(item)
+            url = self.get_url(items[0])
+            proxies = self.get_proxies(items[0])
             return (url, proxies)
 
         return (None, None)

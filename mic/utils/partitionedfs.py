@@ -22,90 +22,51 @@ import os
 
 from mic import msger
 from mic.utils import runner
-from mic.utils.errors import MountError, CreatorError
+from mic.utils.errors import MountError
 from mic.utils.fs_related import *
-from mic.utils.gpt_parser import GptParser
 
-# Overhead of the MBR partitioning scheme (just one sector)
-MBR_OVERHEAD = 1
-# Overhead of the GPT partitioning scheme
-GPT_OVERHEAD = 34
+# Lenght of MBR in sectors
+MBR_SECTOR_LEN = 1
 
 # Size of a sector in bytes
 SECTOR_SIZE = 512
 
 class PartitionedMount(Mount):
-    def __init__(self, mountdir, skipformat = False):
+    def __init__(self, disks, mountdir, skipformat = False):
         Mount.__init__(self, mountdir)
         self.disks = {}
+        for name in disks.keys():
+            self.disks[name] = { 'disk': disks[name],  # Disk object
+                                 'mapped': False, # True if kpartx mapping exists
+                                 'numpart': 0, # Number of allocate partitions
+                                 'partitions': [], # indexes to self.partitions
+                                 # Partitions with part num higher than 3 will
+                                 # be put inside extended partition.
+                                 'extended': 0, # Size of extended partition
+                                 # Offset of next partition (in sectors)
+                                 'offset': 0 }
+
         self.partitions = []
         self.subvolumes = []
         self.mapped = False
         self.mountOrder = []
         self.unmountOrder = []
-        self.parted = find_binary_path("parted")
-        self.kpartx = find_binary_path("kpartx")
-        self.mkswap = find_binary_path("mkswap")
-        self.dmsetup = find_binary_path("dmsetup")
+        self.parted=find_binary_path("parted")
+        self.kpartx=find_binary_path("kpartx")
+        self.mkswap=find_binary_path("mkswap")
         self.btrfscmd=None
-        self.mountcmd = find_binary_path("mount")
-        self.umountcmd = find_binary_path("umount")
+        self.mountcmd=find_binary_path("mount")
+        self.umountcmd=find_binary_path("umount")
         self.skipformat = skipformat
         self.snapshot_created = self.skipformat
         # Size of a sector used in calculations
         self.sector_size = SECTOR_SIZE
-        self._partitions_layed_out = False
 
-    def __add_disk(self, disk_name):
-        """ Add a disk 'disk_name' to the internal list of disks. Note,
-        'disk_name' is the name of the disk in the target system
-        (e.g., sdb). """
-
-        if disk_name in self.disks:
-            # We already have this disk
-            return
-
-        assert not self._partitions_layed_out
-
-        self.disks[disk_name] = \
-                { 'disk': None,     # Disk object
-                  'mapped': False,  # True if kpartx mapping exists
-                  'numpart': 0,     # Number of allocate partitions
-                  'partitions': [], # Indexes to self.partitions
-                  'offset': 0,      # Offset of next partition (in sectors)
-                  # Minimum required disk size to fit all partitions (in bytes)
-                  'min_size': 0,
-                  'ptable_format': "msdos" } # Partition table format
-
-    def add_disk(self, disk_name, disk_obj):
-        """ Add a disk object which have to be partitioned. More than one disk
-        can be added. In case of multiple disks, disk partitions have to be
-        added for each disk separately with 'add_partition()". """
-
-        self.__add_disk(disk_name)
-        self.disks[disk_name]['disk'] = disk_obj
-
-    def __add_partition(self, part):
-        """ This is a helper function for 'add_partition()' which adds a
-        partition to the internal list of partitions. """
-
-        assert not self._partitions_layed_out
-
-        self.partitions.append(part)
-        self.__add_disk(part['disk_name'])
-
-    def add_partition(self, size, disk_name, mountpoint, fstype = None,
-                      label=None, fsopts = None, boot = False, align = None,
-                      part_type = None):
-        """ Add the next partition. Partitions have to be added in the
-        first-to-last order. """
-
-        ks_pnum = len(self.partitions)
-
+    def add_partition(self, size, disk, mountpoint, fstype = None, label=None, fsopts = None, boot = False, align = None):
         # Converting MB to sectors for parted
         size = size * 1024 * 1024 / self.sector_size
 
-        # We need to handle subvolumes for btrfs
+        """ We need to handle subvolumes for btrfs """
         if fstype == "btrfs" and fsopts and fsopts.find("subvol=") != -1:
             self.btrfscmd=find_binary_path("btrfs")
             subvol = None
@@ -120,18 +81,17 @@ class PartitionedMount(Mount):
                                     'mountpoint': mountpoint, # Mount relative to chroot
                                     'fstype': fstype, # Filesystem type
                                     'fsopts': fsopts, # Filesystem mount options
-                                    'disk_name': disk_name, # physical disk name holding partition
+                                    'disk': disk, # physical disk name holding partition
                                     'device': None, # kpartx device node for partition
-                                    'mapper_device': None, # mapper device node
                                     'mount': None, # Mount object
                                     'subvol': subvol, # Subvolume name
                                     'boot': boot, # Bootable flag
                                     'mounted': False # Mount flag
                                    })
 
-        # We still need partition for "/" or non-subvolume
+        """ We still need partition for "/" or non-subvolume """
         if mountpoint == "/" or not fsopts or fsopts.find("subvol=") == -1:
-            # Don't need subvolume for "/" because it will be set as default subvolume
+            """ Don't need subvolume for "/" because it will be set as default subvolume """
             if fsopts and fsopts.find("subvol=") != -1:
                 opts = fsopts.split(",")
                 for opt in opts:
@@ -139,161 +99,108 @@ class PartitionedMount(Mount):
                         opts.remove(opt)
                         break
                 fsopts = ",".join(opts)
+            self.partitions.append({'size': size, # In sectors
+                                    'mountpoint': mountpoint, # Mount relative to chroot
+                                    'fstype': fstype, # Filesystem type
+                                    'fsopts': fsopts, # Filesystem mount options
+                                    'label': label, # Partition label
+                                    'disk': disk, # physical disk name holding partition
+                                    'device': None, # kpartx device node for partition
+                                    'mount': None, # Mount object
+                                    'num': None, # Partition number
+                                    'boot': boot, # Bootable flag
+                                    'align': align}) # Partition alignment
 
-            part = { 'ks_pnum' : ks_pnum, # Partition number in the KS file
-                     'size': size, # In sectors
-                     'mountpoint': mountpoint, # Mount relative to chroot
-                     'fstype': fstype, # Filesystem type
-                     'fsopts': fsopts, # Filesystem mount options
-                     'label': label, # Partition label
-                     'disk_name': disk_name, # physical disk name holding partition
-                     'device': None, # kpartx device node for partition
-                     'mapper_device': None, # mapper device node
-                     'mount': None, # Mount object
-                     'num': None, # Partition number
-                     'boot': boot, # Bootable flag
-                     'align': align, # Partition alignment
-                     'part_type' : part_type, # Partition type
-                     'uuid': None, # Partition UUID (no-GPT use)
-                     'partuuid': None } # Partition UUID (GPT-only)
+    def __create_part_to_image(self, device, parttype, fstype, start, size):
+        # Start is included to the size so we need to substract one from the end.
+        end = start+size-1
+        msger.debug("Added '%s' part at Sector %d with size %d sectors" %
+                    (parttype, start, end))
+        part_cmd = [self.parted, "-s", device, "unit", "s", "mkpart", parttype]
+        if fstype:
+            part_cmd.extend([fstype])
+        part_cmd.extend(["%d" % start, "%d" % end])
 
-            self.__add_partition(part)
+        msger.debug(part_cmd)
+        rc, out = runner.runtool(part_cmd, catch=3)
+        out = out.strip()
+        if out:
+            msger.debug('"parted" output: %s' % out)
+        return rc
 
-    def layout_partitions(self, ptable_format = "msdos"):
-        """ Layout the partitions, meaning calculate the position of every
-        partition on the disk. The 'ptable_format' parameter defines the
-        partition table format, and may be either "msdos" or "gpt". """
+    def __format_disks(self):
+        msger.debug("Assigning partitions to disks")
 
-        msger.debug("Assigning %s partitions to disks" % ptable_format)
-
-        if ptable_format not in ('msdos', 'gpt'):
-            raise MountError("Unknown partition table format '%s', supported " \
-                             "formats are: 'msdos' and 'gpt'" % ptable_format)
-
-        if self._partitions_layed_out:
-            return
-
-        self._partitions_layed_out = True
+        mbr_sector_skipped = False
 
         # Go through partitions in the order they are added in .ks file
         for n in range(len(self.partitions)):
             p = self.partitions[n]
 
-            if not self.disks.has_key(p['disk_name']):
-                raise MountError("No disk %s for partition %s" \
-                                 % (p['disk_name'], p['mountpoint']))
+            if not self.disks.has_key(p['disk']):
+                raise MountError("No disk %s for partition %s" % (p['disk'], p['mountpoint']))
 
-            if p['part_type'] and ptable_format != 'gpt':
-                # The --part-type can also be implemented for MBR partitions,
-                # in which case it would map to the 1-byte "partition type"
-                # filed at offset 3 of the partition entry.
-                raise MountError("setting custom partition type is only " \
-                                 "implemented for GPT partitions")
+            if not mbr_sector_skipped:
+                #  This hack is used to remove one sector from the first partition,
+                #  that is the used to the MBR.
+                p['size'] -= 1
+                mbr_sector_skipped = True
 
             # Get the disk where the partition is located
-            d = self.disks[p['disk_name']]
+            d = self.disks[p['disk']]
             d['numpart'] += 1
-            d['ptable_format'] = ptable_format
 
+            # alignment in sectors
+            align_sectors = None
+            # if first partition then we need to skip the first sector
+            # where the MBR is located, if the alignment isn't set
+            # See: https://wiki.linaro.org/WorkingGroups/Kernel/Projects/FlashCardSurvey
             if d['numpart'] == 1:
-                if ptable_format == "msdos":
-                    overhead = MBR_OVERHEAD
+                if p['align'] and p['align'] > 0:
+                    align_sectors = p['align'] * 1024 / self.sector_size
                 else:
-                    overhead = GPT_OVERHEAD
-
-                # Skip one sector required for the partitioning scheme overhead
-                d['offset'] += overhead
-                # Steal few sectors from the first partition to offset for the
-                # partitioning overhead
-                p['size'] -= overhead
-
-            if p['align']:
+                    align_sectors = MBR_SECTOR_LEN
+            elif p['align']:
                 # If not first partition and we do have alignment set we need
                 # to align the partition.
                 # FIXME: This leaves a empty spaces to the disk. To fill the
-                # gaps we could enlarge the previous partition?
+                # gaps we could enlargea the previous partition?
 
                 # Calc how much the alignment is off.
                 align_sectors = d['offset'] % (p['align'] * 1024 / self.sector_size)
                 # We need to move forward to the next alignment point
                 align_sectors = (p['align'] * 1024 / self.sector_size) - align_sectors
 
-                msger.debug("Realignment for %s%s with %s sectors, original"
-                            " offset %s, target alignment is %sK." %
-                            (p['disk_name'], d['numpart'], align_sectors,
-                             d['offset'], p['align']))
+            if align_sectors:
+                if p['align'] and p['align'] > 0:
+                    msger.debug("Realignment for %s%s with %s sectors, original"
+                                " offset %s, target alignment is %sK." %
+                                (p['disk'], d['numpart'], align_sectors,
+                                 d['offset'], p['align']))
+                # p['size'] already converted in secctors
+                if p['size'] <= align_sectors:
+                    raise MountError("Partition for %s is too small to handle "
+                                     "the alignment change." % p['mountpoint'])
 
                 # increase the offset so we actually start the partition on right alignment
                 d['offset'] += align_sectors
 
+            if d['numpart'] > 3:
+                # Increase allocation of extended partition to hold this partition
+                d['extended'] += p['size']
+                p['type'] = 'logical'
+                p['num'] = d['numpart'] + 1
+            else:
+                p['type'] = 'primary'
+                p['num'] = d['numpart']
+
             p['start'] = d['offset']
             d['offset'] += p['size']
-
-            p['type'] = 'primary'
-            p['num'] = d['numpart']
-
-            if d['ptable_format'] == "msdos":
-                if d['numpart'] > 2:
-                    # Every logical partition requires an additional sector for
-                    # the EBR, so steal the last sector from the end of each
-                    # partition starting from the 3rd one for the EBR. This
-                    # will make sure the logical partitions are aligned
-                    # correctly.
-                    p['size'] -= 1
-
-                if d['numpart'] > 3:
-                    p['type'] = 'logical'
-                    p['num'] = d['numpart'] + 1
-
             d['partitions'].append(n)
-            msger.debug("Assigned %s to %s%d, sectors range %d-%d size %d "
-                        "sectors (%d bytes)." \
-                            % (p['mountpoint'], p['disk_name'], p['num'],
-                               p['start'], p['start'] + p['size'] - 1,
-                               p['size'], p['size'] * self.sector_size))
-
-        # Once all the partitions have been laid out, we can calculate the
-        # minimum disk sizes.
-        for disk_name, d in self.disks.items():
-            d['min_size'] = d['offset']
-            if d['ptable_format'] == 'gpt':
-                # Account for the backup partition table at the end of the disk
-                d['min_size'] += GPT_OVERHEAD
-
-            d['min_size'] *= self.sector_size
-
-    def __run_parted(self, args):
-        """ Run parted with arguments specified in the 'args' list. """
-
-        args.insert(0, self.parted)
-        msger.debug(args)
-
-        rc, out = runner.runtool(args, catch = 3)
-        out = out.strip()
-        msger.debug("'parted': exitcode: %d, output: %s" % (rc, out))
-        # We don't throw exception when return code is not 0, because
-        # parted always fails to reload part table with loop devices. This
-        # prevents us from distinguishing real errors based on return
-        # code.
-        return rc, out
-
-    def __create_partition(self, device, parttype, fstype, start, size):
-        """ Create a partition on an image described by the 'device' object. """
-
-        # Start is included to the size so we need to subtract one from the end.
-        end = start + size - 1
-        msger.debug("Added '%s' partition, sectors %d-%d, size %d sectors" %
-                    (parttype, start, end, size))
-
-        args = ["-s", device, "unit", "s", "mkpart", parttype]
-        if fstype:
-            args.extend([fstype])
-        args.extend(["%d" % start, "%d" % end])
-
-        return self.__run_parted(args)
-
-    def __format_disks(self):
-        self.layout_partitions()
+            msger.debug("Assigned %s to %s%d at Sector %d with size %d sectors "
+                        "/ %d bytes." % (p['mountpoint'], p['disk'], p['num'],
+                                         p['start'], p['size'],
+                                         p['size'] * self.sector_size))
 
         if self.skipformat:
             msger.debug("Skipping disk format, because skipformat flag is set.")
@@ -301,23 +208,24 @@ class PartitionedMount(Mount):
 
         for dev in self.disks.keys():
             d = self.disks[dev]
-            msger.debug("Initializing partition table for %s" % \
-                        (d['disk'].device))
-            self.__run_parted(["-s", d['disk'].device, "mklabel",
-                               d['ptable_format']])
+            msger.debug("Initializing partition table for %s" % (d['disk'].device))
+            rc, out = runner.runtool([self.parted, "-s", d['disk'].device, "mklabel", "msdos"], catch=3)
+            out = out.strip()
+            if out:
+                msger.debug('"parted" output: %s' % out)
+
+            if rc != 0:
+                # NOTE: We don't throw exception when return code is not 0, because
+                # parted always fails to reload part table with loop devices.
+                # This prevents us from distinguishing real errors based on return code.
+                msger.debug("WARNING: parted returned '%s' instead of 0 when creating partition-table for disk '%s'." % (rc, d['disk'].device))
 
         msger.debug("Creating partitions")
 
         for p in self.partitions:
-            d = self.disks[p['disk_name']]
-            if d['ptable_format'] == "msdos" and p['num'] == 5:
-                # The last sector of the 3rd partition was reserved for the EBR
-                # of the first _logical_ partition. This is why the extended
-                # partition should start one sector before the first logical
-                # partition.
-                self.__create_partition(d['disk'].device, "extended",
-                                        None, p['start'] - 1,
-                                        d['offset'] - p['start'])
+            d = self.disks[p['disk']]
+            if p['num'] == 5:
+                self.__create_part_to_image(d['disk'].device,"extended",None,p['start'],d['extended'])
 
             if p['fstype'] == "swap":
                 parted_fs_type = "linux-swap"
@@ -331,67 +239,34 @@ class PartitionedMount(Mount):
 
             # Boot ROM of OMAP boards require vfat boot partition to have an
             # even number of sectors.
-            if p['mountpoint'] == "/boot" and p['fstype'] in ["vfat", "msdos"] \
-               and p['size'] % 2:
-                msger.debug("Substracting one sector from '%s' partition to " \
-                            "get even number of sectors for the partition" % \
-                            p['mountpoint'])
+            if p['mountpoint'] == "/boot" and p['fstype'] in ["vfat","msdos"] and p['size'] % 2:
+                msger.debug("Substracting one sector from '%s' partition to get even number of sectors for the partition." % (p['mountpoint']))
                 p['size'] -= 1
 
-            self.__create_partition(d['disk'].device, p['type'],
-                                    parted_fs_type, p['start'], p['size'])
+            ret = self.__create_part_to_image(d['disk'].device,p['type'],
+                                             parted_fs_type, p['start'],
+                                             p['size'])
+
+            if ret != 0:
+                # NOTE: We don't throw exception when return code is not 0, because
+                # parted always fails to reload part table with loop devices.
+                # This prevents us from distinguishing real errors based on return code.
+                msger.debug("WARNING: parted returned '%s' instead of 0 when creating partition '%s' for disk '%s'." % (ret, p['mountpoint'], d['disk'].device))
 
             if p['boot']:
-                if d['ptable_format'] == 'gpt':
-                    flag_name = "legacy_boot"
-                else:
-                    flag_name = "boot"
-                msger.debug("Set '%s' flag for partition '%s' on disk '%s'" % \
-                            (flag_name, p['num'], d['disk'].device))
-                cmd = ["-s", d['disk'].device,
-                       "set", "%d" % p['num'],
-                       flag_name, "on"]
-                exitcode, output = self.__run_parted(cmd)
-                if exitcode != 0:
-                    msger.warning(
-                        "partition '%s' is marked with --active, "
-                        "but flag '%s' can't be set: "
-                        "exitcode: %s, output: %s"
-                        % (p['mountpoint'], flag_name, exitcode, output))
+                msger.debug("Setting boot flag for partition '%s' on disk '%s'." % (p['num'],d['disk'].device))
+                boot_cmd = [self.parted, "-s", d['disk'].device, "set", "%d" % p['num'], "boot", "on"]
+                msger.debug(boot_cmd)
+                rc = runner.show(boot_cmd)
 
-        # If the partition table format is "gpt", find out PARTUUIDs for all
-        # the partitions. And if users specified custom parition type UUIDs,
-        # set them.
-        for disk_name, disk in self.disks.items():
-            if disk['ptable_format'] != 'gpt':
-                continue
-
-            pnum = 0
-            gpt_parser = GptParser(d['disk'].device, SECTOR_SIZE)
-            # Iterate over all GPT partitions on this disk
-            for entry in gpt_parser.get_partitions():
-                pnum += 1
-                # Find the matching partition in the 'self.partitions' list
-                for n in d['partitions']:
-                    p = self.partitions[n]
-                    if p['num'] == pnum:
-                        # Found, fetch PARTUUID (partition's unique ID)
-                        p['partuuid'] = entry['part_uuid']
-                        msger.debug("PARTUUID for partition %d on disk '%s' " \
-                                    "(mount point '%s') is '%s'" % (pnum, \
-                                    disk_name, p['mountpoint'], p['partuuid']))
-                        if p['part_type']:
-                            entry['type_uuid'] = p['part_type']
-                            msger.debug("Change type of partition %d on disk " \
-                                        "'%s' (mount point '%s') to '%s'" % \
-                                        (pnum, disk_name, p['mountpoint'],
-                                         p['part_type']))
-                            gpt_parser.change_partition(entry)
-
-            del gpt_parser
+                if rc != 0:
+                    # NOTE: We don't throw exception when return code is not 0, because
+                    # parted always fails to reload part table with loop devices.
+                    # This prevents us from distinguishing real errors based on return code.
+                    msger.warning("parted returned '%s' instead of 0 when adding boot flag for partition '%s' disk '%s'." % (rc,p['num'],d['disk'].device))
 
     def __map_partitions(self):
-        """Load it if dm_snapshot isn't loaded. """
+        """Load it if dm_snapshot isn't loaded"""
         load_module("dm_snapshot")
 
         for dev in self.disks.keys():
@@ -410,26 +285,15 @@ class PartitionedMount(Mount):
             # Strip trailing blank and mask verbose output
             i = 0
             while i < len(kpartxOutput) and kpartxOutput[i][0:4] != "loop":
-                i = i + 1
+               i = i + 1
             kpartxOutput = kpartxOutput[i:]
 
-            # Make sure kpartx reported the right count of partitions
+            # Quick sanity check that the number of partitions matches
+            # our expectation. If it doesn't, someone broke the code
+            # further up
             if len(kpartxOutput) != d['numpart']:
-                # If this disk has more than 3 partitions, then in case of MBR
-                # paritions there is an extended parition. Different versions
-                # of kpartx behave differently WRT the extended partition -
-                # some map it, some ignore it. This is why we do the below hack
-                # - if kpartx reported one more partition and the partition
-                # table type is "msdos" and the amount of partitions is more
-                # than 3, we just assume kpartx mapped the extended parition
-                # and we remove it.
-                if len(kpartxOutput) == d['numpart'] + 1 \
-                   and d['ptable_format'] == 'msdos' and len(kpartxOutput) > 3:
-                    kpartxOutput.pop(3)
-                else:
-                    raise MountError("Unexpected number of partitions from " \
-                                     "kpartx: %d != %d" % \
-                                        (len(kpartxOutput), d['numpart']))
+                raise MountError("Unexpected number of partitions from kpartx: %d != %d" %
+                                 (len(kpartxOutput), d['numpart']))
 
             for i in range(len(kpartxOutput)):
                 line = kpartxOutput[i]
@@ -440,7 +304,6 @@ class PartitionedMount(Mount):
                 msger.debug("Dev %s: %s -> %s" % (newdev, loopdev, mapperdev))
                 pnum = d['partitions'][i]
                 self.partitions[pnum]['device'] = loopdev
-                self.partitions[pnum]['mapper_device'] = mapperdev
 
                 # grub's install wants partitions to be named
                 # to match their parent device + partition num
@@ -451,28 +314,15 @@ class PartitionedMount(Mount):
                 os.symlink(mapperdev, loopdev)
 
             msger.debug("Adding partx mapping for %s" % d['disk'].device)
-            rc = runner.show([self.kpartx, "-v", "-sa", d['disk'].device])
+            rc = runner.show([self.kpartx, "-v", "-a", d['disk'].device])
 
             if rc != 0:
                 # Make sure that the device maps are also removed on error case.
                 # The d['mapped'] isn't set to True if the kpartx fails so
                 # failed mapping will not be cleaned on cleanup either.
-                runner.quiet([self.kpartx, "-sd", d['disk'].device])
+                runner.quiet([self.kpartx, "-d", d['disk'].device])
                 raise MountError("Failed to map partitions for '%s'" %
                                  d['disk'].device)
-
-            # FIXME: need a better way to fix the latency
-            import time
-            time.sleep(1)
-
-            if not os.path.exists(mapperdev):
-                # load mapper device if not updated
-                runner.quiet([self.dmsetup, "mknodes"])
-                # still not updated, roll back
-                if not os.path.exists(mapperdev):
-                    runner.quiet([self.kpartx, "-sd", d['disk'].device])
-                    raise MountError("Failed to load mapper devices for '%s'" %
-                                     d['disk'].device)
 
             d['mapped'] = True
 
@@ -489,7 +339,7 @@ class PartitionedMount(Mount):
                     self.partitions[pnum]['device'] = None
 
             msger.debug("Unmapping %s" % d['disk'].device)
-            rc = runner.quiet([self.kpartx, "-sd", d['disk'].device])
+            rc = runner.quiet([self.kpartx, "-d", d['disk'].device])
             if rc != 0:
                 raise MountError("Failed to unmap partitions for '%s'" %
                                  d['disk'].device)
@@ -499,9 +349,8 @@ class PartitionedMount(Mount):
     def __calculate_mountorder(self):
         msger.debug("Calculating mount order")
         for p in self.partitions:
-            if p['mountpoint']:
-                self.mountOrder.append(p['mountpoint'])
-                self.unmountOrder.append(p['mountpoint'])
+            self.mountOrder.append(p['mountpoint'])
+            self.unmountOrder.append(p['mountpoint'])
 
         self.mountOrder.sort()
         self.unmountOrder.sort()
@@ -509,14 +358,13 @@ class PartitionedMount(Mount):
 
     def cleanup(self):
         Mount.cleanup(self)
-        if self.disks:
-            self.__unmap_partitions()
-            for dev in self.disks.keys():
-                d = self.disks[dev]
-                try:
-                    d['disk'].cleanup()
-                except:
-                    pass
+        self.__unmap_partitions()
+        for dev in self.disks.keys():
+            d = self.disks[dev]
+            try:
+                d['disk'].cleanup()
+            except:
+                pass
 
     def unmount(self):
         self.__unmount_subvolumes()
@@ -531,7 +379,7 @@ class PartitionedMount(Mount):
 
             if p['mount'] != None:
                 try:
-                    # Create subvolume snapshot here
+                    """ Create subvolume snapshot here """
                     if p['fstype'] == "btrfs" and p['mountpoint'] == "/" and not self.snapshot_created:
                         self.__create_subvolume_snapshots(p, p["mount"])
                     p['mount'].cleanup()
@@ -539,7 +387,7 @@ class PartitionedMount(Mount):
                     pass
                 p['mount'] = None
 
-    # Only for btrfs
+    """ Only for btrfs """
     def __get_subvolume_id(self, rootpath, subvol):
         if not self.btrfscmd:
             self.btrfscmd=find_binary_path("btrfs")
@@ -611,7 +459,7 @@ class PartitionedMount(Mount):
                                         'mountpoint': items[2], # Mount relative to chroot
                                         'fstype': "btrfs", # Filesystem type
                                         'fsopts': items[3] + ",subvol=%s" %  items[1], # Filesystem mount options
-                                        'disk_name': p['disk_name'], # physical disk name holding partition
+                                        'disk': p['disk'], # physical disk name holding partition
                                         'device': None, # kpartx device node for partition
                                         'mount': None, # Mount object
                                         'subvol': items[1], # Subvolume name
@@ -620,7 +468,7 @@ class PartitionedMount(Mount):
                                    })
 
     def __create_subvolumes(self, p, pdisk):
-        """ Create all the subvolumes. """
+        """ Create all the subvolumes """
 
         for subvol in self.subvolumes:
             argv = [ self.btrfscmd, "subvolume", "create", pdisk.mountdir + "/" + subvol["subvol"]]
@@ -629,17 +477,17 @@ class PartitionedMount(Mount):
             if rc != 0:
                 raise MountError("Failed to create subvolume '%s', return code: %d." % (subvol["subvol"], rc))
 
-        # Set default subvolume, subvolume for "/" is default
+        """ Set default subvolume, subvolume for "/" is default """
         subvol = None
         for subvolume in self.subvolumes:
-            if subvolume["mountpoint"] == "/" and p['disk_name'] == subvolume['disk_name']:
+            if subvolume["mountpoint"] == "/" and p["disk"] == subvolume["disk"]:
                 subvol = subvolume
                 break
 
         if subvol:
-            # Get default subvolume id
+            """ Get default subvolume id """
             subvolid = self. __get_subvolume_id(pdisk.mountdir, subvol["subvol"])
-            # Set default subvolume
+            """ Set default subvolume """
             if subvolid != -1:
                 rc = runner.show([ self.btrfscmd, "subvolume", "set-default", "%d" % subvolid, pdisk.mountdir])
                 if rc != 0:
@@ -649,9 +497,9 @@ class PartitionedMount(Mount):
 
     def __mount_subvolumes(self, p, pdisk):
         if self.skipformat:
-            # Get subvolume info
+            """ Get subvolume info """
             self.__get_subvolume_metadata(p, pdisk)
-            # Set default mount options
+            """ Set default mount options """
             if len(self.subvolumes) != 0:
                 for subvol in self.subvolumes:
                     if subvol["mountpoint"] == p["mountpoint"] == "/":
@@ -664,10 +512,10 @@ class PartitionedMount(Mount):
                         break
 
         if len(self.subvolumes) == 0:
-            # Return directly if no subvolumes
+            """ Return directly if no subvolumes """
             return
 
-        # Remount to make default subvolume mounted
+        """ Remount to make default subvolume mounted """
         rc = runner.show([self.umountcmd, pdisk.mountdir])
         if rc != 0:
             raise MountError("Failed to umount %s" % pdisk.mountdir)
@@ -683,7 +531,7 @@ class PartitionedMount(Mount):
             if subvolid == -1:
                 msger.debug("WARNING: invalid subvolume %s" % subvol["subvol"])
                 continue
-            # Replace subvolume name with subvolume ID
+            """ Replace subvolume name with subvolume ID """
             opts = subvol["fsopts"].split(",")
             for opt in opts:
                 if opt.strip().startswith("subvol="):
@@ -719,7 +567,7 @@ class PartitionedMount(Mount):
         if self.snapshot_created:
             return
 
-        # Remount with subvolid=0
+        """ Remount with subvolid=0 """
         rc = runner.show([self.umountcmd, pdisk.mountdir])
         if rc != 0:
             raise MountError("Failed to umount %s" % pdisk.mountdir)
@@ -731,7 +579,7 @@ class PartitionedMount(Mount):
         if rc != 0:
             raise MountError("Failed to umount %s" % pdisk.mountdir)
 
-        # Create all the subvolume snapshots
+        """ Create all the subvolume snapshots """
         snapshotts = time.strftime("%Y%m%d-%H%M")
         for subvol in self.subvolumes:
             subvolpath = pdisk.mountdir + "/" + subvol["subvol"]

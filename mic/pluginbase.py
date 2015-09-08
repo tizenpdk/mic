@@ -27,11 +27,11 @@ class _Plugin(object):
                 cls.plugins = {}
 
             elif 'mic_plugin_type' in attrs:
-                if attrs['mic_plugin_type'] not in cls.plugins:
-                    cls.plugins[attrs['mic_plugin_type']] = {}
+                    if attrs['mic_plugin_type'] not in cls.plugins:
+                        cls.plugins[attrs['mic_plugin_type']] = {}
 
             elif hasattr(cls, 'mic_plugin_type') and 'name' in attrs:
-                cls.plugins[cls.mic_plugin_type][attrs['name']] = cls
+                    cls.plugins[cls.mic_plugin_type][attrs['name']] = cls
 
         def show_plugins(cls):
             for cls in cls.plugins[cls.mic_plugin_type]:
@@ -45,7 +45,7 @@ class ImagerPlugin(_Plugin):
 
     @classmethod
     def check_image_exists(self, destdir, apacking=None,
-                                          images=(),
+                                          images=[],
                                           release=None):
 
         # if it's a packing file, reset images
@@ -64,18 +64,15 @@ class ImagerPlugin(_Plugin):
             image = os.path.join(destdir, name)
             if not os.path.exists(image):
                 continue
+
             if msger.ask("Target image/dir: %s already exists, "
-                         "clean up the old files and continue?" % image):
+                         "clean up and continue?" % image):
                 if os.path.isdir(image):
-                    for path, dirs, files in os.walk(os.path.abspath(image)):
-                        for fname in files:
-                            fpath = os.path.join(path, fname)
-                            if not fpath.endswith('.log'):
-                                os.remove(fpath)
+                    shutil.rmtree(image)
                 else:
                     os.unlink(image)
             else:
-                raise errors.Abort("Canceled")
+                raise errors.Abort("Cancled")
 
     def do_create(self):
         pass

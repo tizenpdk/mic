@@ -47,10 +47,7 @@ class FC3_PartData(BaseData):
         self.mountpoint = kwargs.get("mountpoint", "")
 
     def __eq__(self, y):
-        if self.mountpoint:
-            return self.mountpoint == y.mountpoint
-        else:
-            return False
+        return self.mountpoint == y.mountpoint
 
     def _getArgsAsStr(self):
         retval = ""
@@ -86,11 +83,7 @@ class FC3_PartData(BaseData):
 
     def __str__(self):
         retval = BaseData.__str__(self)
-        if self.mountpoint:
-            mountpoint_str = "%s" % self.mountpoint
-        else:
-            mountpoint_str = "(No mount point)"
-        retval += "part %s%s\n" % (mountpoint_str, self._getArgsAsStr())
+        retval += "part %s%s\n" % (self.mountpoint, self._getArgsAsStr())
         return retval
 
 class FC4_PartData(FC3_PartData):
@@ -245,15 +238,17 @@ class FC3_Partition(KickstartCommand):
     def parse(self, args):
         (opts, extra) = self.op.parse_args(args=args, lineno=self.lineno)
 
+        if len(extra) != 1:
+            raise KickstartValueError, formatErrorMsg(self.lineno, msg=_("Mount point required for %s") % "partition")
+
         pd = self.handler.PartData()
         self._setToObj(self.op, opts, pd)
         pd.lineno = self.lineno
-        if extra:
-            pd.mountpoint = extra[0]
-            if pd in self.dataList():
-                warnings.warn(_("A partition with the mountpoint %s has already been defined.") % pd.mountpoint)
-        else:
-            pd.mountpoint = None
+        pd.mountpoint=extra[0]
+
+        # Check for duplicates in the data list.
+        if pd in self.dataList():
+            warnings.warn(_("A partition with the mountpoint %s has already been defined.") % pd.mountpoint)
 
         return pd
 

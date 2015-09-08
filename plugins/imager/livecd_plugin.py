@@ -39,25 +39,17 @@ class LiveCDPlugin(ImagerPlugin):
         ${cmd_option_list}
         """
 
+        if not args:
+            raise errors.Usage("need one argument as the path of ks file")
+
         if len(args) != 1:
             raise errors.Usage("Extra arguments given")
 
         creatoropts = configmgr.create
         ksconf = args[0]
 
-        if creatoropts['runtime'] == 'bootstrap':
-            configmgr._ksconf = ksconf
-            rt_util.bootstrap_mic()
-        elif not rt_util.inbootstrap():
-            try:
-                fs_related.find_binary_path('mic-native')
-            except errors.CreatorError:
-                if not msger.ask("Subpackage \"mic-native\" has not been "
-                                 "installed in your host system, still "
-                                 "continue with \"native\" running mode?",
-                                 False):
-                    raise errors.Abort("Abort because subpackage 'mic-native' "
-                                       "has not been installed")
+        if not os.path.exists(ksconf):
+            raise errors.CreatorError("Can't find the file: %s" % ksconf)
 
         if creatoropts['arch'] and creatoropts['arch'].startswith('arm'):
             msger.warning('livecd cannot support arm images, Quit')
@@ -70,30 +62,30 @@ class LiveCDPlugin(ImagerPlugin):
         if creatoropts['release'] is not None:
             if 'name' not in recording_pkgs:
                 recording_pkgs.append('name')
-            if 'vcs' not in recording_pkgs:
-                recording_pkgs.append('vcs')
+
+        ksconf = misc.normalize_ksfile(ksconf,
+                                       creatoropts['release'],
+                                       creatoropts['arch'])
 
         configmgr._ksconf = ksconf
 
+        # Called After setting the configmgr._ksconf as the creatoropts['name'] is reset there.
+        if creatoropts['release'] is not None:
+            creatoropts['outdir'] = "%s/%s/images/%s/" % (creatoropts['outdir'], creatoropts['release'], creatoropts['name'])
+
         # try to find the pkgmgr
         pkgmgr = None
-        backends = pluginmgr.get_plugins('backend')
-        if 'auto' == creatoropts['pkgmgr']:
-            for key in configmgr.prefer_backends:
-                if key in backends:
-                    pkgmgr = backends[key]
-                    break
-        else:
-            for key in backends.keys():
-                if key == creatoropts['pkgmgr']:
-                    pkgmgr = backends[key]
-                    break
+        for (key, pcls) in pluginmgr.get_plugins('backend').iteritems():
+            if key == creatoropts['pkgmgr']:
+                pkgmgr = pcls
+                break
 
         if not pkgmgr:
-            raise errors.CreatorError("Can't find backend: %s, "
-                                      "available choices: %s" %
-                                      (creatoropts['pkgmgr'],
-                                       ','.join(backends.keys())))
+            pkgmgrs = pluginmgr.get_plugins('backend').keys()
+            raise errors.CreatorError("Can't find package manager: %s (availables: %s)" % (creatoropts['pkgmgr'], ', '.join(pkgmgrs)))
+
+        if creatoropts['runtime']:
+            rt_util.runmic_in_runtime(creatoropts['runtime'], creatoropts, ksconf, None)
 
         creator = livecd.LiveCDImageCreator(creatoropts, pkgmgr)
 
@@ -112,10 +104,9 @@ class LiveCDPlugin(ImagerPlugin):
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
             creator.unmount()
-            creator.package(creatoropts["destdir"])
-            creator.create_manifest()
+            creator.package(creatoropts["outdir"])
             if creatoropts['release'] is not None:
-                creator.release_output(ksconf, creatoropts['destdir'], creatoropts['release'])
+                creator.release_output(ksconf, creatoropts['outdir'], creatoropts['release'])
             creator.print_outimage_info()
 
         except errors.CreatorError:
@@ -127,7 +118,7 @@ class LiveCDPlugin(ImagerPlugin):
         return 0
 
     @classmethod
-    def do_chroot(cls, target, cmd=[]):
+    def do_chroot(cls, target):
         os_image = cls.do_unpack(target)
         os_image_dir = os.path.dirname(os_image)
 
@@ -159,13 +150,11 @@ class LiveCDPlugin(ImagerPlugin):
             raise
 
         try:
-            if len(cmd) != 0:
-                cmdline = ' '.join(cmd)
-            else:
-                cmdline = "/bin/bash"
             envcmd = fs_related.find_binary_inchroot("env", extmnt)
             if envcmd:
-                cmdline = "%s HOME=/root %s" % (envcmd, cmdline)
+                cmdline = "%s HOME=/root /bin/bash" % envcmd
+            else:
+                cmdline = "/bin/bash"
             chroot.chroot(extmnt, None, cmdline)
         except:
             raise errors.CreatorError("Failed to chroot to %s." %target)
@@ -182,7 +171,7 @@ class LiveCDPlugin(ImagerPlugin):
             try:
                 subprocess.call(args, preexec_fn = instance._chroot)
             except OSError, (err, msg):
-                raise errors.CreatorError("Failed to execute /usr/libexec/mkliveinitrd: %s" % msg)
+               raise errors.CreatorError("Failed to execute /usr/libexec/mkliveinitrd: %s" % msg)
 
         def __run_post_cleanups(instance):
             kernelver = instance._get_kernel_versions().values()[0][0]
@@ -191,7 +180,7 @@ class LiveCDPlugin(ImagerPlugin):
             try:
                 subprocess.call(args, preexec_fn = instance._chroot)
             except OSError, (err, msg):
-                raise errors.CreatorError("Failed to run post cleanups: %s" % msg)
+               raise errors.CreatorError("Failed to run post cleanups: %s" % msg)
 
         convertoropts = configmgr.convert
         convertoropts['name'] = os.path.splitext(os.path.basename(base_on))[0]

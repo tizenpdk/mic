@@ -1,5 +1,7 @@
+#!/usr/bin/python -tt
 #
-# Copyright (c) 2011~2013 Intel, Inc.
+# Copyright (c) 2007 Red Hat, Inc.
+# Copyright (c) 2011 Intel, Inc.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -14,65 +16,48 @@
 # with this program; if not, write to the Free Software Foundation, Inc., 59
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
-""" Collection of all error class """
-
 class CreatorError(Exception):
-    """ Based class for all mic creator errors """
-    keyword = None
+    """An exception base class for all imgcreate errors."""
+    keyword = '<creator>'
 
     def __init__(self, msg):
-        Exception.__init__(self)
         self.msg = msg
 
     def __str__(self):
-        if isinstance(self.msg, unicode):
-            self.msg = self.msg.encode('utf-8', 'ignore')
-        else:
-            self.msg = str(self.msg)
-        return self.msg
-
-    def __repr__(self):
-        if not hasattr(self, 'keyword') or not self.keyword:
-            self.keyword = self.__class__.__name__
-        return "<%s> %s" % (self.keyword, str(self))
+        return self.keyword + str(self.msg)
 
 class Usage(CreatorError):
-    """ Error class for Usage """
-    pass
+    keyword = '<usage>'
+
+    def __str__(self):
+        return self.keyword + str(self.msg) + ', please use "--help" for more info'
 
 class Abort(CreatorError):
-    """ Error class for Abort """
-    pass
+    keyword = ''
 
 class ConfigError(CreatorError):
-    """ Error class for Config file """
-    keyword = 'Config'
+    keyword = '<config>'
 
 class KsError(CreatorError):
-    """ Error class for Kickstart module """
-    keyword = 'Kickstart'
+    keyword = '<kickstart>'
 
 class RepoError(CreatorError):
-    """ Error class for Repository related """
-    keyword = 'Repository'
+    keyword = '<repo>'
 
 class RpmError(CreatorError):
-    """ Error class for RPM related """
-    keyword = 'RPM'
+    keyword = '<rpm>'
 
 class MountError(CreatorError):
-    """ Error class for Mount related """
-    keyword = 'Mount'
+    keyword = '<mount>'
 
 class SnapshotError(CreatorError):
-    """ Error class for Snapshot related """
-    keyword = 'Snapshot'
+    keyword = '<snapshot>'
 
 class SquashfsError(CreatorError):
-    """ Error class for Squashfs related """
-    keyword = 'Squashfs'
+    keyword = '<squashfs>'
 
 class BootstrapError(CreatorError):
-    """ Error class for Bootstrap related """
-    keyword = 'Bootstrap'
+    keyword = '<bootstrap>'
 
+class RuntimeError(CreatorError):
+    keyword = '<runtime>'

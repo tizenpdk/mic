@@ -18,7 +18,6 @@
 from __future__ import with_statement
 import os
 import sys
-import time
 import tempfile
 import re
 import shutil
@@ -26,8 +25,12 @@ import glob
 import hashlib
 import subprocess
 import platform
-import traceback
+import rpmmisc
 
+try:
+    from hashlib import md5
+except ImportError:
+    from md5 import md5
 
 try:
     import sqlite3 as sqlite
@@ -40,58 +43,17 @@ except ImportError:
     import cElementTree
 xmlparse = cElementTree.parse
 
-from mic import msger
-from mic.utils.errors import CreatorError, SquashfsError
-from mic.utils.fs_related import find_binary_path, makedirs
-from mic.utils.grabber import myurlgrab
-from mic.utils.proxy import get_proxy_for
-from mic.utils import runner
-from mic.utils import rpmmisc
-from mic.utils.safeurl import SafeURL
+from errors import *
+from fs_related import *
+from rpmmisc import myurlgrab
+from proxy import get_proxy_for
+import runner
 
+from mic import msger
 
 RPM_RE  = re.compile("(.*)\.(.*) (.*)-(.*)")
-RPM_FMT = "%(name)s.%(arch)s %(version)s-%(release)s"
+RPM_FMT = "%(name)s.%(arch)s %(ver_rel)s"
 SRPM_RE = re.compile("(.*)-(\d+.*)-(\d+\.\d+).src.rpm")
-
-
-def build_name(kscfg, release=None, prefix = None, suffix = None):
-    """Construct and return an image name string.
-
-    This is a utility function to help create sensible name and fslabel
-    strings. The name is constructed using the sans-prefix-and-extension
-    kickstart filename and the supplied prefix and suffix.
-
-    kscfg -- a path to a kickstart file
-    release --  a replacement to suffix for image release
-    prefix -- a prefix to prepend to the name; defaults to None, which causes
-              no prefix to be used
-    suffix -- a suffix to append to the name; defaults to None, which causes
-              a YYYYMMDDHHMM suffix to be used
-
-    Note, if maxlen is less then the len(suffix), you get to keep both pieces.
-
-    """
-    name = os.path.basename(kscfg)
-    idx = name.rfind('.')
-    if idx >= 0:
-        name = name[:idx]
-
-    if release is not None:
-        suffix = ""
-    if prefix is None:
-        prefix = ""
-    if suffix is None:
-        suffix = time.strftime("%Y%m%d%H%M")
-
-    if name.startswith(prefix):
-        name = name[len(prefix):]
-
-    prefix = "%s-" % prefix if prefix else ""
-    suffix = "-%s" % suffix if suffix else ""
-
-    ret = prefix + name + suffix
-    return ret
 
 def get_distro():
     """Detect linux distribution, support "meego"
@@ -114,42 +76,18 @@ def get_distro():
 
     return (dist, ver, id)
 
-def get_hostname():
-    """Get hostname
-    """
-    return platform.node()
-
-def get_hostname_distro_str():
+def get_distro_str():
     """Get composited string for current linux distribution
     """
     (dist, ver, id) = get_distro()
-    hostname = get_hostname()
 
     if not dist:
-        return "%s(Unknown Linux Distribution)" % hostname
+        return 'Unknown Linux Distro'
     else:
-        distro_str = ' '.join(map(str.strip, (hostname, dist, ver, id)))
-        return distro_str.strip()
+        return ' '.join(map(str.strip, (dist, ver, id)))
 
-_LOOP_RULE_PTH = None
-
+_LOOP_RULE_PTH = "/etc/udev/rules.d/80-prevent-loop-present.rules"
 def hide_loopdev_presentation():
-    udev_rules = "80-prevent-loop-present.rules"
-    udev_rules_dir = [
-                       '/usr/lib/udev/rules.d/',
-                       '/lib/udev/rules.d/',
-                       '/etc/udev/rules.d/'
-                     ]
-
-    global _LOOP_RULE_PTH
-
-    for rdir in udev_rules_dir:
-        if os.path.exists(rdir):
-            _LOOP_RULE_PTH = os.path.join(rdir, udev_rules)
-
-    if not _LOOP_RULE_PTH:
-        return
-
     try:
         with open(_LOOP_RULE_PTH, 'w') as wf:
             wf.write('KERNEL=="loop*", ENV{UDISKS_PRESENTATION_HIDE}="1"')
@@ -159,11 +97,6 @@ def hide_loopdev_presentation():
         pass
 
 def unhide_loopdev_presentation():
-    global _LOOP_RULE_PTH
-
-    if not _LOOP_RULE_PTH:
-        return
-
     try:
         os.unlink(_LOOP_RULE_PTH)
         runner.quiet('udevadm trigger')
@@ -181,7 +114,6 @@ def extract_rpm(rpmfile, targetdir):
     p1 = subprocess.Popen([rpm2cpio, rpmfile], stdout=subprocess.PIPE)
     p2 = subprocess.Popen([cpio, "-idv"], stdin=p1.stdout,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    p1.stdout.close()
     (sout, serr) = p2.communicate()
     msger.verbose(sout or serr)
 
@@ -189,21 +121,13 @@ def extract_rpm(rpmfile, targetdir):
 
 def compressing(fpath, method):
     comp_map = {
-        "gz": ["pgzip", "pigz", "gzip"],
-        "bz2": ["pbzip2", "bzip2"],
+        "gz": "gzip",
+        "bz2": "bzip2"
     }
     if method not in comp_map:
         raise CreatorError("Unsupport compress format: %s, valid values: %s"
                            % (method, ','.join(comp_map.keys())))
-    cmd = None
-    for cmdname in comp_map[method]:
-        try:
-            cmd = find_binary_path(cmdname)
-            break
-        except CreatorError as err:
-            pass
-    if not cmd:
-        raise CreatorError("Command %s not available" % cmdname)
+    cmd = find_binary_path(comp_map[method])
     rc = runner.show([cmd, "-f", fpath])
     if rc:
         raise CreatorError("Failed to %s file: %s" % (comp_map[method], fpath))
@@ -284,18 +208,6 @@ def human_size(size):
     mant = float(size/math.pow(1024, expo))
     return "{0:.1f}{1:s}".format(mant, measure[expo])
 
-def get_block_size(file_obj):
-    """ Returns block size for file object 'file_obj'. Errors are indicated by
-    the 'IOError' exception. """
-
-    from fcntl import ioctl
-    import struct
-
-    # Get the block size of the host file-system for the image file by calling
-    # the FIGETBSZ ioctl (number 2).
-    binary_data = ioctl(file_obj, 2, struct.pack('I', 0))
-    return struct.unpack('I', binary_data)[0]
-
 def check_space_pre_cp(src, dst):
     """Check whether disk space is enough before 'cp' like
     operations, else exception will be raised.
@@ -307,55 +219,27 @@ def check_space_pre_cp(src, dst):
         raise CreatorError("space on %s(%s) is not enough for about %s files"
                            % (dst, human_size(freesize), human_size(srcsize)))
 
-def calc_hashes(file_path, hash_names, start = 0, end = None):
-    """ Calculate hashes for a file. The 'file_path' argument is the file
-    to calculate hash functions for, 'start' and 'end' are the starting and
-    ending file offset to calculate the has functions for. The 'hash_names'
-    argument is a list of hash names to calculate. Returns the the list
-    of calculated hash values in the hexadecimal form in the same order
-    as 'hash_names'.
-    """
-    if end == None:
-        end = os.path.getsize(file_path)
-
-    chunk_size = 65536
-    to_read = end - start
-    read = 0
-
-    hashes = []
-    for hash_name in hash_names:
-        hashes.append(hashlib.new(hash_name))
-
-    with open(file_path, "rb") as f:
-        f.seek(start)
-
-        while read < to_read:
-            if read + chunk_size > to_read:
-                chunk_size = to_read - read
-            chunk = f.read(chunk_size)
-            for hash_obj in hashes:
-                hash_obj.update(chunk)
-            read += chunk_size
-
-    result = []
-    for hash_obj in hashes:
-        result.append(hash_obj.hexdigest())
-
-    return result
-
 def get_md5sum(fpath):
-    return calc_hashes(fpath, ('md5', ))[0]
+    blksize = 65536 # should be optimized enough
 
+    md5sum = md5()
+    with open(fpath, 'rb') as f:
+        while True:
+            data = f.read(blksize)
+            if not data:
+                break
+            md5sum.update(data)
+    return md5sum.hexdigest()
 
 def normalize_ksfile(ksconf, release, arch):
-    '''
-    Return the name of a normalized ks file in which macro variables
-    @BUILD_ID@ and @ARCH@ are replace with real values.
+    def _clrtempks():
+        try:
+            os.unlink(ksconf)
+        except:
+            pass
 
-    The original ks file is returned if no special macro is used, otherwise
-    a temp file is created and returned, which will be deleted when program
-    exits normally.
-    '''
+    if not os.path.exists(ksconf):
+        return
 
     if not release:
         release = "latest"
@@ -365,44 +249,30 @@ def normalize_ksfile(ksconf, release, arch):
     with open(ksconf) as f:
         ksc = f.read()
 
-    if "@ARCH@" not in ksc and "@BUILD_ID@" not in ksc:
-        return ksconf
+    if "@ARCH@" in ksc or "@BUILD_ID@" in ksc:
+        msger.info("Substitute macro variable @BUILD_ID@/@ARCH in ks: %s" % ksconf)
+        ksc = ksc.replace("@ARCH@", arch)
+        ksc = ksc.replace("@BUILD_ID@", release)
+        fd, ksconf = tempfile.mkstemp(prefix=os.path.basename(ksconf), dir="/tmp/")
+        os.write(fd, ksc)
+        os.close(fd)
 
-    msger.info("Substitute macro variable @BUILD_ID@/@ARCH@ in ks: %s" % ksconf)
-    ksc = ksc.replace("@ARCH@", arch)
-    ksc = ksc.replace("@BUILD_ID@", release)
+        msger.debug('new ks path %s' % ksconf)
 
-    fd, ksconf = tempfile.mkstemp(prefix=os.path.basename(ksconf))
-    os.write(fd, ksc)
-    os.close(fd)
-
-    msger.debug('normalized ks file:%s' % ksconf)
-
-    def remove_temp_ks():
-        try:
-            os.unlink(ksconf)
-        except OSError, err:
-            msger.warning('Failed to remove temp ks file:%s:%s' % (ksconf, err))
-
-    import atexit
-    atexit.register(remove_temp_ks)
+        import atexit
+        atexit.register(_clrtempks)
 
     return ksconf
 
-
-def _check_mic_chroot(rootdir):
-    def _path(path):
-        return rootdir.rstrip('/') + path
-
-    release_files = map(_path, [ "/etc/moblin-release",
-                                 "/etc/meego-release",
-                                 "/etc/tizen-release"])
-
-    if not any(map(os.path.exists, release_files)):
-        msger.warning("Dir %s is not a MeeGo/Tizen chroot env" % rootdir)
+def _check_meego_chroot(rootdir):
+    if not os.path.exists(rootdir + "/etc/moblin-release") and \
+       not os.path.exists(rootdir + "/etc/meego-release") and \
+       not os.path.exists(rootdir + "/etc/tizen-release"):
+        raise CreatorError("Directory %s is not a MeeGo/Tizen chroot env"\
+                           % rootdir)
 
     if not glob.glob(rootdir + "/boot/vmlinuz-*"):
-        msger.warning("Failed to find kernel module under %s" % rootdir)
+        raise CreatorError("Failed to find kernel module under %s" % rootdir)
 
     return
 
@@ -431,7 +301,7 @@ def get_image_type(path):
             return None
 
     if os.path.isdir(path):
-        _check_mic_chroot(path)
+        _check_meego_chroot(path)
         return "fs"
 
     maptab = {
@@ -479,23 +349,22 @@ def get_image_type(path):
     else:
         raise CreatorError("Cannot detect the type of image: %s" % path)
 
-
-def get_file_size(filename):
+def get_file_size(file):
     """ Return size in MB unit """
-    cmd = ['du', "-s", "-b", "-B", "1M", filename]
-    rc, duOutput  = runner.runtool(cmd)
+    rc, duOutput  = runner.runtool(['du', "-s", "-b", "-B", "1M", file])
     if rc != 0:
-        raise CreatorError("Failed to run: %s" % ' '.join(cmd))
-    size1 = int(duOutput.split()[0])
+        raise CreatorError("Failed to run %s" % du)
 
-    cmd = ['du', "-s", "-B", "1M", filename]
-    rc, duOutput = runner.runtool(cmd)
+    size1 = int(duOutput.split()[0])
+    rc, duOutput = runner.runtool(['du', "-s", "-B", "1M", file])
     if rc != 0:
-        raise CreatorError("Failed to run: %s" % ' '.join(cmd))
+        raise CreatorError("Failed to run %s" % du)
 
     size2 = int(duOutput.split()[0])
-    return max(size1, size2)
-
+    if size1 > size2:
+        return size1
+    else:
+        return size2
 
 def get_filesystem_avail(fs):
     vfstat = os.statvfs(fs)
@@ -566,17 +435,13 @@ def get_repostrs_from_ks(ks):
 
         if 'name' not in repo:
             repo['name'] = _get_temp_reponame(repodata.baseurl)
-        if hasattr(repodata, 'baseurl') and getattr(repodata, 'baseurl'):
-            repo['baseurl'] = SafeURL(getattr(repodata, 'baseurl'),
-                                      getattr(repodata, 'user', None),
-                                      getattr(repodata, 'passwd', None))
 
         kickstart_repos.append(repo)
 
     return kickstart_repos
 
 def _get_uncompressed_data_from_url(url, filename, proxies):
-    filename = myurlgrab(url.full, filename, proxies)
+    filename = myurlgrab(url, filename, proxies)
     suffix = None
     if filename.endswith(".gz"):
         suffix = ".gz"
@@ -590,44 +455,39 @@ def _get_uncompressed_data_from_url(url, filename, proxies):
 
 def _get_metadata_from_repo(baseurl, proxies, cachedir, reponame, filename,
                             sumtype=None, checksum=None):
-    url = baseurl.join(filename)
+    url = os.path.join(baseurl, filename)
     filename_tmp = str("%s/%s/%s" % (cachedir, reponame, os.path.basename(filename)))
     if os.path.splitext(filename_tmp)[1] in (".gz", ".bz2"):
         filename = os.path.splitext(filename_tmp)[0]
     else:
         filename = filename_tmp
     if sumtype and checksum and os.path.exists(filename):
-        try:
-            sumcmd = find_binary_path("%ssum" % sumtype)
-        except:
-            file_checksum = None
-        else:
-            file_checksum = runner.outs([sumcmd, filename]).split()[0]
-
-        if file_checksum and file_checksum == checksum:
+        sumcmd = "%ssum" % sumtype
+        file_checksum = runner.outs([sumcmd, filename]).split()[0]
+        if file_checksum == checksum:
             return filename
-
     return _get_uncompressed_data_from_url(url,filename_tmp,proxies)
 
 def get_metadata_from_repos(repos, cachedir):
     my_repo_metadata = []
     for repo in repos:
-        reponame = repo.name
-        baseurl = repo.baseurl
+        reponame = repo['name']
+        baseurl  = repo['baseurl']
 
-        if hasattr(repo, 'proxy'):
-            proxy = repo.proxy
+
+        if 'proxy' in repo:
+            proxy = repo['proxy']
         else:
             proxy = get_proxy_for(baseurl)
 
         proxies = None
         if proxy:
-            proxies = {str(baseurl.split(":")[0]): str(proxy)}
+           proxies = {str(baseurl.split(":")[0]):str(proxy)}
 
         makedirs(os.path.join(cachedir, reponame))
-        url = baseurl.join("repodata/repomd.xml")
+        url = os.path.join(baseurl, "repodata/repomd.xml")
         filename = os.path.join(cachedir, reponame, 'repomd.xml')
-        repomd = myurlgrab(url.full, filename, proxies)
+        repomd = myurlgrab(url, filename, proxies)
         try:
             root = xmlparse(repomd)
         except SyntaxError:
@@ -778,14 +638,6 @@ def get_arch(repometadata):
 def get_package(pkg, repometadata, arch = None):
     ver = ""
     target_repo = None
-    if not arch:
-        arches = []
-    elif arch not in rpmmisc.archPolicies:
-        arches = [arch]
-    else:
-        arches = rpmmisc.archPolicies[arch].split(':')
-        arches.append('noarch')
-
     for repo in repometadata:
         if repo["primary"].endswith(".xml"):
             root = xmlparse(repo["primary"])
@@ -793,7 +645,7 @@ def get_package(pkg, repometadata, arch = None):
             ns = ns[0:ns.rindex("}")+1]
             for elm in root.getiterator("%spackage" % ns):
                 if elm.find("%sname" % ns).text == pkg:
-                    if elm.find("%sarch" % ns).text in arches:
+                    if elm.find("%sarch" % ns).text != "src":
                         version = elm.find("%sversion" % ns)
                         tmpver = "%s-%s" % (version.attrib['ver'], version.attrib['rel'])
                         if tmpver > ver:
@@ -804,42 +656,26 @@ def get_package(pkg, repometadata, arch = None):
                         break
         if repo["primary"].endswith(".sqlite"):
             con = sqlite.connect(repo["primary"])
-            if arch:
-                sql = 'select version, release, location_href from packages ' \
-                      'where name = "%s" and arch IN ("%s")' % \
-                      (pkg, '","'.join(arches))
-                for row in con.execute(sql):
+            if not arch:
+                for row in con.execute("select version, release,location_href from packages where name = \"%s\" and arch != \"src\"" % pkg):
                     tmpver = "%s-%s" % (row[0], row[1])
                     if tmpver > ver:
-                        ver = tmpver
                         pkgpath = "%s" % row[2]
                         target_repo = repo
                     break
             else:
-                sql = 'select version, release, location_href from packages ' \
-                      'where name = "%s"' % pkg
-                for row in con.execute(sql):
+                for row in con.execute("select version, release,location_href from packages where name = \"%s\"" % pkg):
                     tmpver = "%s-%s" % (row[0], row[1])
                     if tmpver > ver:
-                        ver = tmpver
                         pkgpath = "%s" % row[2]
                         target_repo = repo
                     break
             con.close()
     if target_repo:
-        makedirs("%s/packages/%s" % (target_repo["cachedir"], target_repo["name"]))
-        url = target_repo["baseurl"].join(pkgpath)
-        filename = str("%s/packages/%s/%s" % (target_repo["cachedir"], target_repo["name"], os.path.basename(pkgpath)))
-        if os.path.exists(filename):
-            ret = rpmmisc.checkRpmIntegrity('rpm', filename)
-            if ret == 0:
-                return filename
-
-            msger.warning("package %s is damaged: %s" %
-                          (os.path.basename(filename), filename))
-            os.unlink(filename)
-
-        pkg = myurlgrab(url.full, filename, target_repo["proxies"])
+        makedirs("%s/%s/packages" % (target_repo["cachedir"], target_repo["name"]))
+        url = os.path.join(target_repo["baseurl"], pkgpath)
+        filename = str("%s/%s/packages/%s" % (target_repo["cachedir"], target_repo["name"], os.path.basename(pkgpath)))
+        pkg = myurlgrab(str(url), filename, target_repo["proxies"])
         return pkg
     else:
         return None
@@ -976,27 +812,23 @@ def setup_qemu_emulator(rootdir, arch):
 
     # qemu_emulator is a special case, we can't use find_binary_path
     # qemu emulator should be a statically-linked executable file
-    if arch == "aarch64":
-        node = "/proc/sys/fs/binfmt_misc/aarch64"
-        if os.path.exists("/usr/bin/qemu-arm64") and is_statically_linked("/usr/bin/qemu-arm64"):
-            arm_binary = "qemu-arm64"
-        elif os.path.exists("/usr/bin/qemu-aarch64") and is_statically_linked("/usr/bin/qemu-aarch64"):
-            arm_binary = "qemu-aarch64"
-        elif os.path.exists("/usr/bin/qemu-arm64-static"):
-            arm_binary = "qemu-arm64-static"
-        elif os.path.exists("/usr/bin/qemu-aarch64-static"):
-            arm_binary = "qemu-aarch64-static"
-        else:
-            raise CreatorError("Please install a statically-linked %s" % arm_binary)
-    else:
-        node = "/proc/sys/fs/binfmt_misc/arm"
-        arm_binary = "qemu-arm"
-        if not os.path.exists("/usr/bin/qemu-arm") or not is_statically_linked("/usr/bin/qemu-arm"):
-            arm_binary = "qemu-arm-static"
-        if not os.path.exists("/usr/bin/%s" % arm_binary):
-            raise CreatorError("Please install a statically-linked %s" % arm_binary)
+    qemu_emulator = "/usr/bin/qemu-arm"
+    if not os.path.exists(qemu_emulator) or not is_statically_linked(qemu_emulator):
+        qemu_emulator = "/usr/bin/qemu-arm-static"
+    if not os.path.exists(qemu_emulator):
+        raise CreatorError("Please install a statically-linked qemu-arm")
 
-    qemu_emulator = "/usr/bin/%s" % arm_binary
+    # qemu emulator version check
+    armv7_list = [arch for arch in rpmmisc.archPolicies.keys() if arch.startswith('armv7')]
+    if arch in armv7_list:  # need qemu (>=0.13.0)
+        qemuout = runner.outs([qemu_emulator, "-h"])
+        m = re.search("version\s*([.\d]+)", qemuout)
+        if m:
+            qemu_version = m.group(1)
+            if qemu_version < "0.13":
+                raise CreatorError("Requires %s version >=0.13 for %s" % (qemu_emulator, arch))
+        else:
+            msger.warning("Can't get version info of %s, please make sure it's higher than 0.13.0" % qemu_emulator)
 
     if not os.path.exists(rootdir + "/usr/bin"):
         makedirs(rootdir + "/usr/bin")
@@ -1007,20 +839,23 @@ def setup_qemu_emulator(rootdir, arch):
         msger.info('Try to disable selinux')
         runner.show(["/usr/sbin/setenforce", "0"])
 
+    node = "/proc/sys/fs/binfmt_misc/arm"
+    if is_statically_linked(qemu_emulator) and os.path.exists(node):
+        return qemu_emulator
+
     # unregister it if it has been registered and is a dynamically-linked executable
-    if os.path.exists(node):
+    if not is_statically_linked(qemu_emulator) and os.path.exists(node):
         qemu_unregister_string = "-1\n"
-        with open(node, "w") as fd:
-            fd.write(qemu_unregister_string)
+        fd = open("/proc/sys/fs/binfmt_misc/arm", "w")
+        fd.write(qemu_unregister_string)
+        fd.close()
 
     # register qemu emulator for interpreting other arch executable file
     if not os.path.exists(node):
-        if arch == "aarch64":
-            qemu_arm_string = ":aarch64:M::\\x7fELF\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xb7:\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xfe\\xff\\xff:%s:\n" % qemu_emulator
-        else:
-            qemu_arm_string = ":arm:M::\\x7fELF\\x01\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x28\\x00:\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xfa\\xff\\xff\\xff:%s:\n" % qemu_emulator
-        with open("/proc/sys/fs/binfmt_misc/register", "w") as fd:
-            fd.write(qemu_arm_string)
+        qemu_arm_string = ":arm:M::\\x7fELF\\x01\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x28\\x00:\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xfa\\xff\\xff\\xff:%s:\n" % qemu_emulator
+        fd = open("/proc/sys/fs/binfmt_misc/register", "w")
+        fd.write(qemu_arm_string)
+        fd.close()
 
     return qemu_emulator
 

@@ -22,10 +22,8 @@ import shutil
 from mic import kickstart, msger
 from mic.utils import fs_related, rpmmisc, runner, misc
 from mic.utils.errors import CreatorError
-from mic.imager.loop import LoopImageCreator
-from mic.imager.baseimager import BaseImageCreator
 
-
+from loop import LoopImageCreator
 class LiveImageCreatorBase(LoopImageCreator):
     """A base class for LiveCD image creators.
 
@@ -35,8 +33,6 @@ class LiveImageCreatorBase(LoopImageCreator):
         LiveImageCreator creates a bootable ISO containing the system image,
         bootloader, bootloader configuration, kernel and initramfs.
     """
-
-    img_format = 'livecd'
 
     def __init__(self, creatoropts = None, pkgmgr = None):
         """Initialise a LiveImageCreator instance.
@@ -133,9 +129,14 @@ class LiveImageCreatorBase(LoopImageCreator):
         """
 
         if self.ks is None:
-            r = "ro rd.live.image"
+            r = "ro liveimg"
         else:
             r = kickstart.get_kernel_args(self.ks)
+
+        if os.path.exists(self._instroot + "/usr/bin/rhgb") or \
+           os.path.exists(self._instroot + "/usr/bin/plymouth") and \
+           ' rhgb' not in r:
+            r += ' rhgb'
 
         return r
 
@@ -157,27 +158,23 @@ class LiveImageCreatorBase(LoopImageCreator):
         def _exists(path):
             return os.path.exists(self._instroot + path)
 
-        if _exists("/usr/bin/checkisomd5") and os.path.exists("/usr/bin/implantisomd5"):
-            return True
+        if (_exists("/usr/lib/moblin-installer-runtime/checkisomd5") or \
+            _exists("/usr/bin/checkisomd5")):
+            if (os.path.exists("/usr/bin/implantisomd5") or
+               os.path.exists("/usr/lib/anaconda-runtime/implantisomd5")):
+                return True
 
         return False
-
-    def __restore_file(self,path):
-        try:
-            os.unlink(path)
-        except:
-            pass
-        if os.path.exists(path + '.rpmnew'):
-            os.rename(path + '.rpmnew', path)
 
     def _mount_instroot(self, base_on = None):
         LoopImageCreator._mount_instroot(self, base_on)
         self.__write_initrd_conf(self._instroot + "/etc/sysconfig/mkinitrd")
-        self.__write_dracut_conf(self._instroot + "/etc/dracut.conf.d/02livecd.conf")
 
     def _unmount_instroot(self):
-        self.__restore_file(self._instroot + "/etc/sysconfig/mkinitrd")
-        self.__restore_file(self._instroot + "/etc/dracut.conf.d/02livecd.conf")
+        try:
+            os.unlink(self._instroot + "/etc/sysconfig/mkinitrd")
+        except:
+            pass
         LoopImageCreator._unmount_instroot(self)
 
     def __ensure_isodir(self):
@@ -202,12 +199,6 @@ class LiveImageCreatorBase(LoopImageCreator):
             env["LIVE_ROOT"] = self.__ensure_isodir()
 
         return env
-    def __write_dracut_conf(self, path):
-        if not os.path.exists(os.path.dirname(path)):
-            fs_related.makedirs(os.path.dirname(path))
-        f = open(path, "a")
-        f.write('add_dracutmodules+=" dmsquash-live pollcdrom "')
-        f.close()
 
     def __write_initrd_conf(self, path):
         content = ""
@@ -262,7 +253,7 @@ class LiveImageCreatorBase(LoopImageCreator):
         if isohybrid:
             args = [isohybrid, "-partok", iso ]
             if runner.show(args) != 0:
-                raise CreatorError("Hybrid ISO creation failed!")
+             	raise CreatorError("Hybrid ISO creation failed!")
 
         self.__implant_md5sum(iso)
 
@@ -270,6 +261,8 @@ class LiveImageCreatorBase(LoopImageCreator):
         """Implant an isomd5sum."""
         if os.path.exists("/usr/bin/implantisomd5"):
             implantisomd5 = "/usr/bin/implantisomd5"
+        elif os.path.exists("/usr/lib/anaconda-runtime/implantisomd5"):
+            implantisomd5 = "/usr/lib/anaconda-runtime/implantisomd5"
         else:
             msger.warning("isomd5sum not installed; not setting up mediacheck")
             implantisomd5 = ""
@@ -308,14 +301,10 @@ class LiveImageCreatorBase(LoopImageCreator):
                 packimg = os.path.join(self._outdir, self.pack_to)
                 misc.packing(packimg, isoimg)
                 os.unlink(isoimg)
-                self.image_files.update({'image_files': [self.pack_to]})
-            else:
-                self.image_files.update({'image_files': [self.name + ".iso"]})
 
         finally:
             shutil.rmtree(self.__isodir, ignore_errors = True)
             self.__isodir = None
-
 
 class x86LiveImageCreator(LiveImageCreatorBase):
     """ImageCreator for x86 machines"""
@@ -365,7 +354,7 @@ class x86LiveImageCreator(LiveImageCreatorBase):
 
     def __copy_syslinux_background(self, isodest):
         background_path = self._instroot + \
-                          "/usr/share/branding/default/syslinux/syslinux-vesa-splash.jpg"
+                          "/usr/lib/anaconda-runtime/syslinux-vesa-splash.jpg"
 
         if not os.path.exists(background_path):
             return False
@@ -376,23 +365,15 @@ class x86LiveImageCreator(LiveImageCreatorBase):
 
     def __copy_kernel_and_initramfs(self, isodir, version, index):
         bootdir = self._instroot + "/boot"
-        isDracut = False
 
         if self._alt_initrd_name:
             src_initrd_path = os.path.join(bootdir, self._alt_initrd_name)
         else:
-            if os.path.exists(bootdir + "/initramfs-" + version + ".img"):
-                src_initrd_path = os.path.join(bootdir, "initramfs-" +version+ ".img")
-                isDracut = True
-            else:
-                src_initrd_path = os.path.join(bootdir, "initrd-" +version+ ".img")
+            src_initrd_path = os.path.join(bootdir, "initrd-" +version+ ".img")
 
         try:
-            msger.debug("copy %s to %s" % (bootdir + "/vmlinuz-" + version, isodir + "/isolinux/vmlinuz" + index))
             shutil.copyfile(bootdir + "/vmlinuz-" + version,
-                    isodir + "/isolinux/vmlinuz" + index)
-
-            msger.debug("copy %s to %s" % (src_initrd_path, isodir + "/isolinux/initrd" + index + ".img"))
+                            isodir + "/isolinux/vmlinuz" + index)
             shutil.copyfile(src_initrd_path,
                             isodir + "/isolinux/initrd" + index + ".img")
         except:
@@ -405,7 +386,7 @@ class x86LiveImageCreator(LiveImageCreatorBase):
                             isodir + "/isolinux/xen" + index + ".gz")
             is_xen = True
 
-        return (is_xen,isDracut)
+        return is_xen
 
     def __is_default_kernel(self, kernel, kernels):
         if len(kernels) == 1:
@@ -427,7 +408,7 @@ timeout %(timeout)d
 %(background)s
 menu title Welcome to %(distroname)s!
 menu color border 0 #ffffffff #00000000
-menu color sel 7 #ff000000 #ffffffff
+menu color sel 7 #ffffffff #ff000000
 menu color title 0 #ffffffff #00000000
 menu color tabmsg 0 #ffffffff #00000000
 menu color unsel 0 #ffffffff #00000000
@@ -436,26 +417,20 @@ menu color hotkey 7 #ffffffff #ff000000
 menu color timeout_msg 0 #ffffffff #00000000
 menu color timeout 0 #ffffffff #00000000
 menu color cmdline 0 #ffffffff #00000000
-menu hidden
-menu clear
 """ % args
 
-    def __get_image_stanza(self, is_xen, isDracut, **args):
-        if isDracut:
-            args["rootlabel"] = "live:CDLABEL=%(fslabel)s" % args
-        else:
-            args["rootlabel"] = "CDLABEL=%(fslabel)s" % args
+    def __get_image_stanza(self, is_xen, **args):
         if not is_xen:
             template = """label %(short)s
   menu label %(long)s
   kernel vmlinuz%(index)s
-  append initrd=initrd%(index)s.img root=%(rootlabel)s rootfstype=iso9660 %(liveargs)s %(extra)s
+  append initrd=initrd%(index)s.img root=CDLABEL=%(fslabel)s rootfstype=iso9660 %(liveargs)s %(extra)s
 """
         else:
             template = """label %(short)s
   menu label %(long)s
   kernel mboot.c32
-  append xen%(index)s.gz --- vmlinuz%(index)s root=%(rootlabel)s rootfstype=iso9660 %(liveargs)s %(extra)s --- initrd%(index)s.img
+  append xen%(index)s.gz --- vmlinuz%(index)s root=CDLABEL=%(fslabel)s rootfstype=iso9660 %(liveargs)s %(extra)s --- initrd%(index)s.img
 """
         return template % args
 
@@ -526,9 +501,7 @@ menu clear
         index = "0"
         netinst = None
         for version in versions:
-            (is_xen, isDracut) = self.__copy_kernel_and_initramfs(isodir, version, index)
-            if index == "0":
-                self._isDracut = isDracut
+            is_xen = self.__copy_kernel_and_initramfs(isodir, version, index)
 
             default = self.__is_default_kernel(kernel, kernels)
 
@@ -541,15 +514,10 @@ menu clear
 
             oldmenus["verify"]["long"] = "%s %s" % (oldmenus["verify"]["long"],
                                                     long)
-            # tell dracut not to ask for LUKS passwords or activate mdraid sets
-            if isDracut:
-                kern_opts = kernel_options + " rd.luks=0 rd.md=0 rd.dm=0"
-            else:
-                kern_opts = kernel_options
 
-            cfg += self.__get_image_stanza(is_xen, isDracut,
+            cfg += self.__get_image_stanza(is_xen,
                                            fslabel = self.fslabel,
-                                           liveargs = kern_opts,
+                                           liveargs = kernel_options,
                                            long = long,
                                            short = "linux" + index,
                                            extra = "",
@@ -581,9 +549,9 @@ menu clear
                         extra = ""
 
                 if len(menu) >= 3:
-                    extra = ' '.join(menu[2:])
+                    extra = menu[2]
 
-                cfg += self.__get_image_stanza(is_xen, isDracut,
+                cfg += self.__get_image_stanza(is_xen,
                                                fslabel = self.fslabel,
                                                liveargs = kernel_options,
                                                long = long,
@@ -599,7 +567,7 @@ menu clear
             default_index = "0"
 
         if netinst:
-            cfg += self.__get_image_stanza(is_xen, isDracut,
+            cfg += self.__get_image_stanza(is_xen,
                                            fslabel = self.fslabel,
                                            liveargs = kernel_options,
                                            long = netinst["long"],

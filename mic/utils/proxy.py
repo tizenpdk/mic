@@ -16,7 +16,6 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os
-import re
 import urlparse
 
 _my_proxies = {}
@@ -54,16 +53,16 @@ def _set_proxies(proxy = None, no_proxy = None):
     _my_noproxy = None
     proxies = []
     if proxy:
-        proxies.append(("http_proxy", proxy))
+       proxies.append(("http_proxy", proxy))
     if no_proxy:
-        proxies.append(("no_proxy", no_proxy))
+       proxies.append(("no_proxy", no_proxy))
 
     # Get proxy settings from environment if not provided
     if not proxy and not no_proxy:
-        proxies = os.environ.items()
+       proxies = os.environ.items()
 
-        # Remove proxy env variables, urllib2 can't handle them correctly
-        unset_proxy_environ()
+       # Remove proxy env variables, urllib2 can't handle them correctly
+       unset_proxy_environ()
 
     for name, value in proxies:
         name = name.lower()
@@ -146,7 +145,7 @@ def _isnoproxy(url):
 
     hostisip = _isip(host)
     for item in _my_noproxy_list:
-        if hostisip and item["match"] == 1:
+        if hostisip and item["match"] <= 1:
             continue
 
         if item["match"] == 2 and hostisip:
@@ -158,7 +157,7 @@ def _isnoproxy(url):
                 return True
 
         if item["match"] == 1:
-            if re.match(r".*%s$" % item["needle"], host):
+            if host.rfind(item["needle"]) > 0:
                 return True
 
     return False

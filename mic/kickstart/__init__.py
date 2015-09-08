@@ -19,8 +19,11 @@
 import os, sys, re
 import shutil
 import subprocess
+import time
 import string
-import collections
+
+from mic import msger
+from mic.utils import errors, misc, runner, fs_related as fs
 
 import pykickstart.sections as kssections
 import pykickstart.commands as kscommands
@@ -31,14 +34,10 @@ import pykickstart.version as ksversion
 from pykickstart.handlers.control import commandMap
 from pykickstart.handlers.control import dataMap
 
-from mic import msger
-from mic.utils import errors, misc, runner, fs_related as fs
-from custom_commands import desktop, micrepo, micboot, partition, installerfw
-from mic.utils.safeurl import SafeURL
-
-
-AUTH_URL_PTN = r"(?P<scheme>.*)://(?P<username>.*)(:?P<password>.*)?@(?P<url>.*)"
-
+import custom_commands.desktop as desktop
+import custom_commands.moblinrepo as moblinrepo
+import custom_commands.micboot as micboot
+import custom_commands.partition as partition
 
 class PrepackageSection(kssections.Section):
     sectionOpen = "%prepackages"
@@ -98,18 +97,17 @@ def read_kickstart(path):
     #ks = ksparser.KickstartParser(version)
 
     using_version = ksversion.DEVEL
-    commandMap[using_version]["desktop"] = desktop.Mic_Desktop
-    commandMap[using_version]["repo"] = micrepo.Mic_Repo
-    commandMap[using_version]["bootloader"] = micboot.Mic_Bootloader
-    commandMap[using_version]["part"] = partition.Mic_Partition
-    commandMap[using_version]["partition"] = partition.Mic_Partition
-    commandMap[using_version]["installerfw_plugins"] = installerfw.Mic_installerfw
-    dataMap[using_version]["RepoData"] = micrepo.Mic_RepoData
-    dataMap[using_version]["PartData"] = partition.Mic_PartData
+    commandMap[using_version]["desktop"] = desktop.Moblin_Desktop
+    commandMap[using_version]["repo"] = moblinrepo.Moblin_Repo
+    commandMap[using_version]["bootloader"] = micboot.Moblin_Bootloader
+    commandMap[using_version]["part"] = partition.MeeGo_Partition
+    commandMap[using_version]["partition"] = partition.MeeGo_Partition
+    dataMap[using_version]["RepoData"] = moblinrepo.Moblin_RepoData
+    dataMap[using_version]["PartData"] = partition.MeeGo_PartData
     superclass = ksversion.returnClassForVersion(version=using_version)
 
     class KSHandlers(superclass):
-        def __init__(self):
+        def __init__(self, mapping={}):
             superclass.__init__(self, mapping=commandMap[using_version])
             self.prepackages = ksparser.Packages()
             self.attachment = ksparser.Packages()
@@ -128,6 +126,48 @@ def read_kickstart(path):
             raise errors.KsError("%s" % err)
 
     return ks
+
+def build_name(kscfg, prefix = None, suffix = None, maxlen = None):
+    """Construct and return an image name string.
+
+    This is a utility function to help create sensible name and fslabel
+    strings. The name is constructed using the sans-prefix-and-extension
+    kickstart filename and the supplied prefix and suffix.
+
+    If the name exceeds the maxlen length supplied, the prefix is first dropped
+    and then the kickstart filename portion is reduced until it fits. In other
+    words, the suffix takes precedence over the kickstart portion and the
+    kickstart portion takes precedence over the prefix.
+
+    kscfg -- a path to a kickstart file
+    prefix -- a prefix to prepend to the name; defaults to None, which causes
+              no prefix to be used
+    suffix -- a suffix to append to the name; defaults to None, which causes
+              a YYYYMMDDHHMM suffix to be used
+    maxlen -- the maximum length for the returned string; defaults to None,
+              which means there is no restriction on the name length
+
+    Note, if maxlen is less then the len(suffix), you get to keep both pieces.
+
+    """
+    name = os.path.basename(kscfg)
+    idx = name.rfind('.')
+    if idx >= 0:
+        name = name[:idx]
+
+    if prefix is None:
+        prefix = ""
+    if suffix is None:
+        suffix = time.strftime("%Y%m%d%H%M")
+
+    if name.startswith(prefix):
+        name = name[len(prefix):]
+
+    ret = prefix + name + "-" + suffix
+    if not maxlen is None and len(ret) > maxlen:
+        ret = name[:maxlen - len(suffix) - 1] + "-" + suffix
+
+    return ret
 
 class KickstartConfig(object):
     """A base class for applying kickstart configurations to a system."""
@@ -160,10 +200,6 @@ class LanguageConfig(KickstartConfig):
         self._check_sysconfig()
         if kslang.lang:
             f = open(self.path("/etc/sysconfig/i18n"), "w+")
-            f.write("LANG=\"" + kslang.lang + "\"\n")
-            f.close()
-
-            f = open(self.path("/etc/locale.conf"), "w+")
             f.write("LANG=\"" + kslang.lang + "\"\n")
             f.close()
 
@@ -292,12 +328,9 @@ class UserConfig(KickstartConfig):
         if userconfig.groups:
             args += [ "--groups", string.join(userconfig.groups, ",") ]
         if userconfig.name:
-            args += [ "-m"]
-            args += [ "-d", "/home/%s" % userconfig.name  ]
             args.append(userconfig.name)
             try:
                 dev_null = os.open("/dev/null", os.O_WRONLY)
-                msger.debug('adding user with %s' % args)
                 subprocess.call(args,
                                  stdout = dev_null,
                                  stderr = dev_null,
@@ -322,7 +355,10 @@ class UserConfig(KickstartConfig):
     @apply_wrapper
     def apply(self, user):
         for userconfig in user.userList:
-            self.addUser(userconfig)
+            try:
+                self.addUser(userconfig)
+            except:
+                raise
 
 class ServicesConfig(KickstartConfig):
     """A class to apply a kickstart services configuration to a system."""
@@ -428,10 +464,6 @@ class MoblinRepoConfig(KickstartConfig):
         fd.write("name=" + reponame + "\n")
         fd.write("failovermethod=priority\n")
         if baseurl:
-            auth_url = re.compile(AUTH_URL_PTN)
-            m = auth_url.match(baseurl)
-            if m:
-                baseurl = "%s://%s" % (m.group('scheme'), m.group('url'))
             fd.write("baseurl=" + baseurl + "\n")
         if mirrorlist:
             fd.write("mirrorlist=" + mirrorlist + "\n")
@@ -464,10 +496,8 @@ class MoblinRepoConfig(KickstartConfig):
         f.close()
 
     @apply_wrapper
-    def apply(self, ksrepo, repodata, repourl):
+    def apply(self, ksrepo, repodata):
         for repo in ksrepo.repoList:
-            if repo.name in repourl:
-                repo.baseurl = repourl[repo.name]
             if repo.save:
                 #self.__create_repo_file(repo, "/etc/yum.repos.d")
                 self.__create_repo_file(repo, "/etc/zypp/repos.d")
@@ -643,15 +673,6 @@ class NetworkConfig(KickstartConfig):
         self.write_hosts(hostname)
         self.write_resolv(nodns, nameservers)
 
-def use_installerfw(ks, feature):
-    """ Check if the installer framework has to be used for a feature
-    "feature". """
-
-    features = ks.handler.installerfw.features
-    if features:
-        if feature in features or "all" in features:
-            return True
-    return False
 
 def get_image_size(ks, default = None):
     __size = 0
@@ -697,7 +718,7 @@ def get_timeout(ks, default = None):
         return default
     return int(ks.handler.bootloader.timeout)
 
-def get_kernel_args(ks, default = "ro rd.live.image"):
+def get_kernel_args(ks, default = "ro liveimg"):
     if not hasattr(ks.handler.bootloader, "appendLine"):
         return default
     if ks.handler.bootloader.appendLine is None:
@@ -718,47 +739,57 @@ def get_default_kernel(ks, default = None):
         return default
     return ks.handler.bootloader.default
 
-RepoType = collections.namedtuple("Repo",
-               "name, baseurl, mirrorlist, includepkgs, excludepkgs, proxy, \
-               proxy_username, proxy_password, debuginfo, \
-               source, gpgkey, disable, ssl_verify, nocache, \
-               cost, priority")
-
-def Repo(name, baseurl, mirrorlist=None, includepkgs=[], excludepkgs=[], proxy=None,
-         proxy_username=None, proxy_password=None, debuginfo=None,
-         source=None, gpgkey=None, disable=None, ssl_verify=None,
-         nocache=False, cost=None, priority=None):
-    return RepoType(name, baseurl, mirrorlist, includepkgs, excludepkgs, proxy,
-                    proxy_username, proxy_password, debuginfo,
-                    source, gpgkey, disable, ssl_verify, nocache,
-                    cost, priority)
-
-
-def get_repos(ks, repo_urls=None, ignore_ksrepo=False):
+def get_repos(ks, repo_urls = {}):
     repos = {}
-    for repodata in ks.handler.repo.repoList:
-        repo = {}
-        for field in RepoType._fields:
-            if hasattr(repodata, field) and getattr(repodata, field):
-                repo[field] = getattr(repodata, field)
+    for repo in ks.handler.repo.repoList:
+        inc = []
+        if hasattr(repo, "includepkgs"):
+            inc.extend(repo.includepkgs)
 
-        if hasattr(repodata, 'baseurl') and getattr(repodata, 'baseurl'):
-            repo['baseurl'] = SafeURL(getattr(repodata, 'baseurl'),
-                                      getattr(repodata, 'user', None),
-                                      getattr(repodata, 'passwd', None))
+        exc = []
+        if hasattr(repo, "excludepkgs"):
+            exc.extend(repo.excludepkgs)
 
-        if 'name' in repo:
-            repos[repo['name']] = Repo(**repo)
+        baseurl = repo.baseurl
+        mirrorlist = repo.mirrorlist
 
-    if repo_urls:
-        if ignore_ksrepo:
-            repos = {}
-        for name, repo in repo_urls.items():
-            if 'baseurl' in repo:
-                repo['baseurl'] = SafeURL(repo.get('baseurl'),
-                                          repo.get('user', None),
-                                          repo.get('passwd', None))
-            repos[name] = Repo(**repo)
+        if repo.name in repo_urls:
+            baseurl = repo_urls[repo.name]
+            mirrorlist = None
+
+        if repos.has_key(repo.name):
+            msger.warning("Overriding already specified repo %s" %(repo.name,))
+
+        proxy = None
+        if hasattr(repo, "proxy"):
+            proxy = repo.proxy
+        proxy_username = None
+        if hasattr(repo, "proxy_username"):
+            proxy_username = repo.proxy_username
+        proxy_password = None
+        if hasattr(repo, "proxy_password"):
+            proxy_password = repo.proxy_password
+        if hasattr(repo, "debuginfo"):
+            debuginfo = repo.debuginfo
+        if hasattr(repo, "source"):
+            source = repo.source
+        if hasattr(repo, "gpgkey"):
+            gpgkey = repo.gpgkey
+        if hasattr(repo, "disable"):
+            disable = repo.disable
+        ssl_verify = True
+        if hasattr(repo, "ssl_verify"):
+            ssl_verify = repo.ssl_verify == "yes"
+        cost = None
+        if hasattr(repo, "cost"):
+            cost = repo.cost
+        priority = None
+        if hasattr(repo, "priority"):
+            priority = repo.priority
+
+        repos[repo.name] = (repo.name, baseurl, mirrorlist, inc, exc,
+                            proxy, proxy_username, proxy_password, debuginfo,
+                            source, gpgkey, disable, ssl_verify, cost, priority)
 
     return repos.values()
 
@@ -768,22 +799,22 @@ def convert_method_to_repo(ks):
     except (AttributeError, kserrors.KickstartError):
         pass
 
-def get_attachment(ks, required=()):
-    return ks.handler.attachment.packageList + list(required)
+def get_attachment(ks, required = []):
+    return ks.handler.attachment.packageList + required
 
-def get_pre_packages(ks, required=()):
-    return ks.handler.prepackages.packageList + list(required)
+def get_pre_packages(ks, required = []):
+    return ks.handler.prepackages.packageList + required
 
-def get_packages(ks, required=()):
-    return ks.handler.packages.packageList + list(required)
+def get_packages(ks, required = []):
+    return ks.handler.packages.packageList + required
 
-def get_groups(ks, required=()):
-    return ks.handler.packages.groupList + list(required)
+def get_groups(ks, required = []):
+    return ks.handler.packages.groupList + required
 
-def get_excluded(ks, required=()):
-    return ks.handler.packages.excludedList + list(required)
+def get_excluded(ks, required = []):
+    return ks.handler.packages.excludedList + required
 
-def get_partitions(ks):
+def get_partitions(ks, required = []):
     return ks.handler.partition.partitions
 
 def ignore_missing(ks):

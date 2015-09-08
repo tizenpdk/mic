@@ -43,25 +43,17 @@ class FsPlugin(ImagerPlugin):
         ${cmd_option_list}
         """
 
+        if not args:
+            raise errors.Usage("need one argument as the path of ks file")
+
         if len(args) != 1:
             raise errors.Usage("Extra arguments given")
 
         creatoropts = configmgr.create
         ksconf = args[0]
 
-        if creatoropts['runtime'] == 'bootstrap':
-            configmgr._ksconf = ksconf
-            rt_util.bootstrap_mic()
-        elif not rt_util.inbootstrap():
-            try:
-                fs_related.find_binary_path('mic-native')
-            except errors.CreatorError:
-                if not msger.ask("Subpackage \"mic-native\" has not been "
-                                 "installed in your host system, still "
-                                 "continue with \"native\" running mode?",
-                                 False):
-                    raise errors.Abort("Abort because subpackage 'mic-native' "
-                                       "has not been installed")
+        if not os.path.exists(ksconf):
+            raise errors.CreatorError("Can't find the file: %s" % ksconf)
 
         recording_pkgs = []
         if len(creatoropts['record_pkgs']) > 0:
@@ -70,30 +62,30 @@ class FsPlugin(ImagerPlugin):
         if creatoropts['release'] is not None:
             if 'name' not in recording_pkgs:
                 recording_pkgs.append('name')
-            if 'vcs' not in recording_pkgs:
-                recording_pkgs.append('vcs')
+
+        ksconf = misc.normalize_ksfile(ksconf,
+                                       creatoropts['release'],
+                                       creatoropts['arch'])
 
         configmgr._ksconf = ksconf
 
+        # Called After setting the configmgr._ksconf as the creatoropts['name'] is reset there.
+        if creatoropts['release'] is not None:
+            creatoropts['outdir'] = "%s/%s/images/%s/" % (creatoropts['outdir'], creatoropts['release'], creatoropts['name'])
+
         # try to find the pkgmgr
         pkgmgr = None
-        backends = pluginmgr.get_plugins('backend')
-        if 'auto' == creatoropts['pkgmgr']:
-            for key in configmgr.prefer_backends:
-                if key in backends:
-                    pkgmgr = backends[key]
-                    break
-        else:
-            for key in backends.keys():
-                if key == creatoropts['pkgmgr']:
-                    pkgmgr = backends[key]
-                    break
+        for (key, pcls) in pluginmgr.get_plugins('backend').iteritems():
+            if key == creatoropts['pkgmgr']:
+                pkgmgr = pcls
+                break
 
         if not pkgmgr:
-            raise errors.CreatorError("Can't find backend: %s, "
-                                      "available choices: %s" %
-                                      (creatoropts['pkgmgr'],
-                                       ','.join(backends.keys())))
+            pkgmgrs = pluginmgr.get_plugins('backend').keys()
+            raise errors.CreatorError("Can't find package manager: %s (availables: %s)" % (creatoropts['pkgmgr'], ', '.join(pkgmgrs)))
+
+        if creatoropts['runtime']:
+            rt_util.runmic_in_runtime(creatoropts['runtime'], creatoropts, ksconf, None)
 
         creator = fs.FsImageCreator(creatoropts, pkgmgr)
         creator._include_src = opts.include_src
@@ -121,11 +113,9 @@ class FsPlugin(ImagerPlugin):
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
             creator.unmount()
-            creator.package(creatoropts["destdir"])
-            creator.create_manifest()
+            creator.package(creatoropts["outdir"])
             if creatoropts['release'] is not None:
-                creator.release_output(ksconf, creatoropts['destdir'],
-                        creatoropts['release'])
+                creator.release_output(ksconf, creatoropts['outdir'], creatoropts['release'])
             creator.print_outimage_info()
         except errors.CreatorError:
             raise
@@ -136,16 +126,15 @@ class FsPlugin(ImagerPlugin):
         return 0
 
     @classmethod
-    def do_chroot(self, target, cmd=[]):#chroot.py parse opts&args
-        try:
-            if len(cmd) != 0:
-                cmdline = ' '.join(cmd)
-            else:
-                cmdline = "/bin/bash"
-            envcmd = fs_related.find_binary_inchroot("env", target)
-            if envcmd:
-                cmdline = "%s HOME=/root %s" % (envcmd, cmdline)
-            chroot.chroot(target, None, cmdline)
-        finally:
-            chroot.cleanup_after_chroot("dir", None, None, None)
-            return 1
+    def do_chroot(self, target):#chroot.py parse opts&args
+            try:
+                envcmd = fs_related.find_binary_inchroot("env", target)
+                if envcmd:
+                    cmdline = "%s HOME=/root /bin/bash" % envcmd
+                else:
+                    cmdline = "/bin/bash"
+                chroot.chroot(target, None, cmdline)
+            finally:
+                chroot.cleanup_after_chroot("dir", None, None, None)
+                return 1
+

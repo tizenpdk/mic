@@ -16,19 +16,11 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os, sys, errno
-from mic import msger, creator, __version__ as VERSION
+from mic import msger, creator
 from mic.utils import cmdln, misc, errors
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
-
-
-def optparser_setup(func):
-    """Setup optparser for a function"""
-    if not hasattr(func, "optparser"):
-        func.optparser = cmdln.SubCmdOptionParser()
-        func.optparser.disable_interspersed_args()
-    return func
-
+from mic.__version__ import VERSION
 
 class MicCmd(cmdln.Cmdln):
     """
@@ -48,7 +40,7 @@ class MicCmd(cmdln.Cmdln):
     def print_version(self):
         msger.raw("%s %s (%s)" % (self.name,
                                   self.version,
-                                  misc.get_hostname_distro_str()))
+                                  misc.get_distro_str()))
 
     def get_optparser(self):
         optparser = cmdln.CmdlnOptionParser(self, version=self.version)
@@ -60,22 +52,11 @@ class MicCmd(cmdln.Cmdln):
         optparser.add_option('-v', '--verbose', action='store_true',
                              dest='verbose',
                              help='verbose information')
-        optparser.add_option('-i', '--interactive', action='store_true',
-                             dest='interactive', default='True',
-                             help='interactive output')
-        optparser.add_option('--non-interactive', action='store_false',
-                             dest='interactive', default='True',
-                             help='non-interactive output')
         return optparser
 
     def postoptparse(self):
-        if self.options.interactive:
-            msger.enable_interactive()
-        else:
-            msger.disable_interactive()
-
         if self.options.verbose:
-            msger.set_loglevel('VERBOSE')
+            msger.set_loglevel('verbose')
 
         if self.options.debug:
             try:
@@ -84,24 +65,27 @@ class MicCmd(cmdln.Cmdln):
             except ImportError:
                 pass
 
-            msger.set_loglevel('DEBUG')
+            msger.set_loglevel('debug')
 
         self.print_version()
 
     def help_create(self):
-        crobj = creator.Creator()
-        crobj.optparser = crobj.get_optparser()
-        doc = crobj.__doc__
-        doc = crobj._help_reindent(doc)
-        doc = crobj._help_preprocess(doc, None)
-        doc = doc.replace(crobj.name, "${cmd_name}", 1)
+        cr = creator.Creator()
+        cr.optparser = cr.get_optparser()
+        doc = cr.__doc__
+        doc = cr._help_reindent(doc)
+        doc = cr._help_preprocess(doc, None)
+        doc = doc.replace(cr.name, "${cmd_name}", 1)
         doc = doc.rstrip() + '\n'
         return doc
 
     @cmdln.alias("cr")
     def do_create(self, argv):
-        crobj = creator.Creator()
-        crobj.main(argv[1:])
+        try:
+            cr = creator.Creator()
+            cr.main(argv[1:])
+        except:
+            raise
 
     def _root_confirm(self):
         if os.geteuid() != 0:
@@ -148,14 +132,14 @@ class MicCmd(cmdln.Cmdln):
         srcimager = None
         destimager = None
         for iname, icls in pluginmgr.get_plugins('imager').iteritems():
-            if iname == srcformat and hasattr(icls, "do_unpack"):
-                srcimager = icls
-            if iname == destformat and hasattr(icls, "do_pack"):
-                destimager = icls
+           if iname == srcformat and hasattr(icls, "do_unpack"):
+               srcimager = icls
+           if iname == destformat and hasattr(icls, "do_pack"):
+               destimager = icls
 
         if (srcimager and destimager) is None:
-            raise errors.CreatorError("Can't convert from %s to %s" \
-                                      % (srcformat, destformat))
+           raise errors.CreatorError("Can't convert from %s to %s" \
+                                     % (srcformat, destformat))
 
         else:
             maptab = {
@@ -182,12 +166,11 @@ class MicCmd(cmdln.Cmdln):
     @cmdln.option('-s', '--saveto',
                   action='store', dest='saveto', default=None,
                   help="Save the unpacked image to specified dir")
-    @optparser_setup
     def do_chroot(self, subcmd, opts, *args):
         """${cmd_name}: chroot into an image
 
         Usage:
-            mic chroot [options] <imagefile> [command [arg]...]
+            mic chroot <imagefile>
 
         ${cmd_option_list}
         """
@@ -199,7 +182,10 @@ class MicCmd(cmdln.Cmdln):
                 handler.optparser.print_help()
             return 1
 
-        targetimage = args[0]
+        if len(args) == 1:
+            targetimage = args[0]
+        else:
+            raise errors.Usage("Extra argument given")
 
         if not os.path.exists(targetimage):
             raise errors.CreatorError("Cannot find the image: %s"
@@ -223,19 +209,19 @@ class MicCmd(cmdln.Cmdln):
             raise errors.CreatorError("Cannot support image type: %s" \
                                       % imagetype)
 
-        chrootclass.do_chroot(targetimage, args[1:])
+        chrootclass.do_chroot(targetimage)
 
 if __name__ == "__main__":
     try:
-        MIC = MicCmd()
-        sys.exit(MIC.main())
+        mic = MicCmd()
+        sys.exit(mic.main())
 
     except KeyboardInterrupt:
         msger.error('\n^C catched, program aborted.')
 
     # catch 'no space left' exception, etc
-    except IOError, ioerr:
-        if ioerr.errno == errno.ENOSPC:
+    except IOError, e:
+        if e.errno == errno.ENOSPC:
             msger.error('\nNo space left on device')
         raise
 
@@ -246,8 +232,8 @@ if __name__ == "__main__":
         msger.info(str(msg))
 
     except errors.CreatorError, err:
-        if msger.get_loglevel() == 'DEBUG':
+        if msger.get_loglevel() == 'debug':
             import traceback
             msger.error(traceback.format_exc())
         else:
-            msger.error(str(err))
+            msger.error('\n'+str(err))

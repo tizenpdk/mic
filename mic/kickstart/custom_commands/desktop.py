@@ -21,11 +21,11 @@ from pykickstart.base import *
 from pykickstart.errors import *
 from pykickstart.options import *
 
-class Mic_Desktop(KickstartCommand):
+class Moblin_Desktop(KickstartCommand):
     def __init__(self, writePriority=0,
                        defaultdesktop=None,
                        defaultdm=None,
-                       autologinuser=None,
+                       autologinuser="meego",
                        session=None):
 
         KickstartCommand.__init__(self, writePriority)

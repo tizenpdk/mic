@@ -16,14 +16,12 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os, sys, re
-import pwd
 from optparse import SUPPRESS_HELP
 
 from mic import msger
 from mic.utils import cmdln, errors, rpmmisc
-from mic.conf import configmgr
-from mic.plugin import pluginmgr
-
+from conf import configmgr
+from plugin import pluginmgr
 
 class Creator(cmdln.Cmdln):
     """${name}: create an image
@@ -85,7 +83,7 @@ class Creator(cmdln.Cmdln):
                              help='Record the info of installed packages, '
                                   'multiple values can be specified which '
                                   'joined by ",", valid values: "name", '
-                                  '"content", "license", "vcs"')
+                                  '"content", "license"')
         optparser.add_option('', '--pkgmgr', type='string', dest='pkgmgr',
                              default=None,
                              help='Specify backend package manager')
@@ -94,7 +92,8 @@ class Creator(cmdln.Cmdln):
                              help='Path for local pkgs(rpms) to be installed')
         optparser.add_option('', '--runtime', type='string',
                              dest='runtime', default=None,
-                             help='Specify  runtime mode, avaiable: bootstrap, native')
+                             #help='Specify  runtime mode, avaiable: bootstrap')
+                             help=SUPPRESS_HELP)
         # --taring-to is alias to --pack-to
         optparser.add_option('', '--taring-to', type='string',
                              dest='pack_to', default=None,
@@ -109,26 +108,6 @@ class Creator(cmdln.Cmdln):
                              dest='copy_kernel',
                              help='Copy kernel files from image /boot directory'
                                   ' to the image output directory.')
-        optparser.add_option('', '--install-pkgs', type='string', action='store',
-                             dest='install_pkgs', default=None,
-                             help='Specify what type of packages to be installed,'
-                                  ' valid: source, debuginfo, debugsource')
-        optparser.add_option('', '--check-pkgs', type='string', action='store',
-                             dest='check_pkgs', default=[],
-                             help='Check if given packages would be installed, '
-                                  'packages should be separated by comma')
-        optparser.add_option('', '--tmpfs', action='store_true', dest='enabletmpfs',
-                             help='Setup tmpdir as tmpfs to accelerate, experimental'
-                                  ' feature, use it if you have more than 4G memory')
-        optparser.add_option('', '--repourl', action='append',
-                             dest='repourl', default=[],
-                             help=SUPPRESS_HELP)
-        optparser.add_option('-R', '--repo', action='append',
-                             dest='repo', default=[],
-                             help=SUPPRESS_HELP)
-        optparser.add_option('', '--ignore-ksrepo', action='store_true',
-                             dest='ignore_ksrepo', default=False,
-                             help=SUPPRESS_HELP)
         return optparser
 
     def preoptparse(self, argv):
@@ -173,17 +152,14 @@ class Creator(cmdln.Cmdln):
         abspath = lambda pth: os.path.abspath(os.path.expanduser(pth))
 
         if self.options.verbose:
-            msger.set_loglevel('VERBOSE')
+            msger.set_loglevel('verbose')
         if self.options.debug:
-            msger.set_loglevel('DEBUG')
+            msger.set_loglevel('debug')
 
         if self.options.logfile:
-            logfile_abs_path = abspath(self.options.logfile)
-            if os.path.isdir(logfile_abs_path):
-                raise errors.Usage("logfile's path %s should be file"
-                                   % self.options.logfile)
-            configmgr.create['logfile'] = logfile_abs_path
-            configmgr.set_logfile()
+            msger.set_interactive(False)
+            msger.set_logfile(self.options.logfile)
+            configmgr.create['logfile'] = self.options.logfile
 
         if self.options.config:
             configmgr.reset()
@@ -195,33 +171,21 @@ class Creator(cmdln.Cmdln):
             configmgr.create['cachedir'] = abspath(self.options.cachedir)
         os.environ['ZYPP_LOCKFILE_ROOT'] = configmgr.create['cachedir']
 
-        for cdir in ('outdir', 'cachedir'):
-            if os.path.exists(configmgr.create[cdir]) \
-              and not os.path.isdir(configmgr.create[cdir]):
-                raise errors.Usage('Invalid directory specified: %s' \
-                                   % configmgr.create[cdir])
-            if not os.path.exists(configmgr.create[cdir]):
-                os.makedirs(configmgr.create[cdir])
-                if os.getenv('SUDO_UID', '') and os.getenv('SUDO_GID', ''):
-                    os.chown(configmgr.create[cdir],
-                             int(os.getenv('SUDO_UID')),
-                             int(os.getenv('SUDO_GID')))
-
         if self.options.local_pkgs_path is not None:
             if not os.path.exists(self.options.local_pkgs_path):
-                raise errors.Usage('Local pkgs directory: \'%s\' not exist' \
+                msger.error('Local pkgs directory: \'%s\' not exist' \
                               % self.options.local_pkgs_path)
             configmgr.create['local_pkgs_path'] = self.options.local_pkgs_path
 
         if self.options.release:
-            configmgr.create['release'] = self.options.release.rstrip('/')
+            configmgr.create['release'] = self.options.release
 
         if self.options.record_pkgs:
             configmgr.create['record_pkgs'] = []
             for infotype in self.options.record_pkgs.split(','):
-                if infotype not in ('name', 'content', 'license', 'vcs'):
+                if infotype not in ('name', 'content', 'license'):
                     raise errors.Usage('Invalid pkg recording: %s, valid ones:'
-                                       ' "name", "content", "license", "vcs"' \
+                                       ' "name", "content", "license"' \
                                        % infotype)
 
                 configmgr.create['record_pkgs'].append(infotype)
@@ -240,53 +204,13 @@ class Creator(cmdln.Cmdln):
             configmgr.create['pkgmgr'] = self.options.pkgmgr
 
         if self.options.runtime:
-            configmgr.set_runtime(self.options.runtime)
+            configmgr.create['runtime'] = self.options.runtime
 
         if self.options.pack_to is not None:
             configmgr.create['pack_to'] = self.options.pack_to
 
         if self.options.copy_kernel:
             configmgr.create['copy_kernel'] = self.options.copy_kernel
-
-        if self.options.install_pkgs:
-            configmgr.create['install_pkgs'] = []
-            for pkgtype in self.options.install_pkgs.split(','):
-                if pkgtype not in ('source', 'debuginfo', 'debugsource'):
-                    raise errors.Usage('Invalid parameter specified: "%s", '
-                                       'valid values: source, debuginfo, '
-                                       'debusource' % pkgtype)
-
-                configmgr.create['install_pkgs'].append(pkgtype)
-
-        if self.options.check_pkgs:
-            for pkg in self.options.check_pkgs.split(','):
-                configmgr.create['check_pkgs'].append(pkg)
-
-        if self.options.enabletmpfs:
-            configmgr.create['enabletmpfs'] = self.options.enabletmpfs
-
-        if self.options.repourl:
-            for item in self.options.repourl:
-                try:
-                    key, val = item.split('=')
-                except:
-                    continue
-                configmgr.create['repourl'][key] = val
-
-        if self.options.repo:
-            for optvalue in self.options.repo:
-                repo = {}
-                for item in optvalue.split(';'):
-                    try:
-                        key, val = item.split('=')
-                    except:
-                        continue
-                    repo[key.strip()] = val.strip()
-                if 'name' in repo:
-                    configmgr.create['extrarepos'][repo['name']] = repo
-
-        if self.options.ignore_ksrepo:
-            configmgr.create['ignore_ksrepo'] = self.options.ignore_ksrepo
 
     def main(self, argv=None):
         if argv is None:
@@ -303,7 +227,7 @@ class Creator(cmdln.Cmdln):
             except cmdln.CmdlnUserError, ex:
                 msg = "%s: %s\nTry '%s help' for info.\n"\
                       % (self.name, ex, self.name)
-                raise errors.Usage(msg)
+                msger.error(msg)
 
             except cmdln.StopOptionProcessing, ex:
                 return 0
@@ -316,25 +240,10 @@ class Creator(cmdln.Cmdln):
 
         self.postoptparse()
 
+        if os.geteuid() != 0 and args[0] != 'help':
+            msger.error('root permission is required to continue, abort')
+
         return self.cmd(args)
-
-    def precmd(self, argv): # check help before cmd
-
-        if '-h' in argv or '?' in argv or '--help' in argv or 'help' in argv:
-            return argv
-
-        if len(argv) == 1:
-            return ['help', argv[0]]
-
-        if os.geteuid() != 0:
-            msger.error("Root permission is required, abort")
-
-        try:
-            w = pwd.getpwuid(os.geteuid())
-        except KeyError:
-            msger.warning("Might fail in compressing stage for undetermined user")
-
-        return argv
 
     def do_auto(self, subcmd, opts, *args):
         """${cmd_name}: auto detect image type from magic header
@@ -364,6 +273,10 @@ class Creator(cmdln.Cmdln):
                 inline_argv = inline_argv.replace(m2.group(0), '')
                 return (cmdname, inline_argv)
 
+            return None
+
+        if not args:
+            self.do_help(['help', subcmd])
             return None
 
         if len(args) != 1:

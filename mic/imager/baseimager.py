@@ -26,16 +26,13 @@ import subprocess
 import re
 import tarfile
 import glob
-import json
-from datetime import datetime
 
 import rpm
 
 from mic import kickstart
-from mic import msger, __version__ as VERSION
+from mic import msger
 from mic.utils.errors import CreatorError, Abort
-from mic.utils import misc, grabber, runner, fs_related as fs
-from mic.chroot import kill_proc_inchroot
+from mic.utils import misc, rpmmisc, runner, fs_related as fs
 
 class BaseImageCreator(object):
     """Installs a system to a chroot directory.
@@ -50,8 +47,6 @@ class BaseImageCreator(object):
       imgcreate.ImageCreator(ks, "foo").create()
 
     """
-    # Output image format
-    img_format = ''
 
     def __del__(self):
         self.cleanup()
@@ -68,7 +63,6 @@ class BaseImageCreator(object):
         """
 
         self.pkgmgr = pkgmgr
-        self.distro_name = ""
 
         self.__builddir = None
         self.__bindmounts = []
@@ -77,22 +71,18 @@ class BaseImageCreator(object):
         self.name = "target"
         self.tmpdir = "/var/tmp/mic"
         self.cachedir = "/var/tmp/mic/cache"
-        self.workdir = "/var/tmp/mic/build"
         self.destdir = "."
-        self.installerfw_prefix = "INSTALLERFW_"
         self.target_arch = "noarch"
         self._local_pkgs_path = None
         self.pack_to = None
-        self.repourl = {}
 
         # If the kernel is save to the destdir when copy_kernel cmd is called.
         self._need_copy_kernel = False
-        # setup tmpfs tmpdir when enabletmpfs is True
-        self.enabletmpfs = False
 
         if createopts:
             # Mapping table for variables that have different names.
             optmap = {"pkgmgr" : "pkgmgr_name",
+                      "outdir" : "destdir",
                       "arch" : "target_arch",
                       "local_pkgs_path" : "_local_pkgs_path",
                       "copy_kernel" : "_need_copy_kernel",
@@ -108,6 +98,9 @@ class BaseImageCreator(object):
 
             self.destdir = os.path.abspath(os.path.expanduser(self.destdir))
 
+            if 'release' in createopts and createopts['release']:
+                self.name += '-' + createopts['release']
+
             if self.pack_to:
                 if '@NAME@' in self.pack_to:
                     self.pack_to = self.pack_to.replace('@NAME@', self.name)
@@ -117,12 +110,11 @@ class BaseImageCreator(object):
                 if ext not in misc.pack_formats:
                     self.pack_to += ".tar"
 
-        self._dep_checks = ["ls", "bash", "cp", "echo", "modprobe"]
+        self._dep_checks = ["ls", "bash", "cp", "echo", "modprobe", "passwd"]
 
         # Output image file names
         self.outimage = []
-        # Output info related with manifest
-        self.image_files = {}
+
         # A flag to generate checksum
         self._genchecksum = False
 
@@ -281,22 +273,16 @@ class BaseImageCreator(object):
 
         if not os.path.exists(destdir):
             os.makedirs(destdir)
-
-        content = None
-        if 'vcs' in self._recording_pkgs:
-            vcslst = ["%s %s" % (k, v) for (k, v) in self._pkgs_vcsinfo.items()]
-            content = '\n'.join(sorted(vcslst))
-        elif 'name' in self._recording_pkgs:
-            content = '\n'.join(pkgs)
-        if content:
+        if 'name' in self._recording_pkgs :
             namefile = os.path.join(destdir, self.name + '.packages')
             f = open(namefile, "w")
+            content = '\n'.join(pkgs)
             f.write(content)
             f.close()
             self.outimage.append(namefile);
 
         # if 'content', save more details
-        if 'content' in self._recording_pkgs:
+        if 'content' in self._recording_pkgs :
             contfile = os.path.join(destdir, self.name + '.files')
             f = open(contfile, "w")
 
@@ -304,9 +290,16 @@ class BaseImageCreator(object):
                 content = pkg + '\n'
 
                 pkgcont = self._pkgs_content[pkg]
-                content += '    '
-                content += '\n    '.join(pkgcont)
-                content += '\n'
+                items = []
+                if pkgcont.has_key('dir'):
+                    items = map(lambda x:x+'/', pkgcont['dir'])
+                if pkgcont.has_key('file'):
+                    items.extend(pkgcont['file'])
+
+                if items:
+                    content += '    '
+                    content += '\n    '.join(items)
+                    content += '\n'
 
                 content += '\n'
                 f.write(content)
@@ -332,7 +325,7 @@ class BaseImageCreator(object):
                 f.write('\n')
 
             f.close()
-            self.outimage.append(licensefile)
+            self.outimage.append(licensefile);
 
     def _get_required_packages(self):
         """Return a list of required packages.
@@ -405,25 +398,6 @@ class BaseImageCreator(object):
         s += "sysfs      /sys      sysfs   defaults         0 0\n"
         return s
 
-    def _set_part_env(self, pnum, prop, value):
-        """ This is a helper function which generates an environment variable
-        for a property "prop" with value "value" of a partition number "pnum".
-
-        The naming convention is:
-           * Variables start with INSTALLERFW_PART
-           * Then goes the partition number, the order is the same as
-             specified in the KS file
-           * Then goes the property name
-        """
-
-        if value == None:
-            value = ""
-        else:
-            value = str(value)
-
-        name = self.installerfw_prefix + ("PART%d_" % pnum) + prop
-        return { name : value }
-
     def _get_post_scripts_env(self, in_chroot):
         """Return an environment dict for %post scripts.
 
@@ -431,56 +405,13 @@ class BaseImageCreator(object):
         variables for %post scripts by return a dict containing the desired
         environment.
 
+        By default, this returns an empty dict.
+
         in_chroot -- whether this %post script is to be executed chroot()ed
                      into _instroot.
+
         """
-
-        env = {}
-        pnum = 0
-
-        for p in kickstart.get_partitions(self.ks):
-            env.update(self._set_part_env(pnum, "SIZE", p.size))
-            env.update(self._set_part_env(pnum, "MOUNTPOINT", p.mountpoint))
-            env.update(self._set_part_env(pnum, "FSTYPE", p.fstype))
-            env.update(self._set_part_env(pnum, "LABEL", p.label))
-            env.update(self._set_part_env(pnum, "FSOPTS", p.fsopts))
-            env.update(self._set_part_env(pnum, "BOOTFLAG", p.active))
-            env.update(self._set_part_env(pnum, "ALIGN", p.align))
-            env.update(self._set_part_env(pnum, "TYPE_ID", p.part_type))
-            env.update(self._set_part_env(pnum, "UUID", p.uuid))
-            env.update(self._set_part_env(pnum, "DEVNODE",
-                                          "/dev/%s%d" % (p.disk, pnum + 1)))
-            env.update(self._set_part_env(pnum, "DISK_DEVNODE",
-                                          "/dev/%s" % p.disk))
-            pnum += 1
-
-        # Count of paritions
-        env[self.installerfw_prefix + "PART_COUNT"] = str(pnum)
-
-        # Partition table format
-        ptable_format = self.ks.handler.bootloader.ptable
-        env[self.installerfw_prefix + "PTABLE_FORMAT"] = ptable_format
-
-        # The kerned boot parameters
-        kernel_opts = self.ks.handler.bootloader.appendLine
-        env[self.installerfw_prefix + "KERNEL_OPTS"] = kernel_opts
-
-        # Name of the image creation tool
-        env[self.installerfw_prefix + "INSTALLER_NAME"] = "mic"
-
-        # The real current location of the mounted file-systems
-        if in_chroot:
-            mount_prefix = "/"
-        else:
-            mount_prefix = self._instroot
-        env[self.installerfw_prefix + "MOUNT_PREFIX"] = mount_prefix
-
-        # These are historical variables which lack the common name prefix
-        if not in_chroot:
-            env["INSTALL_ROOT"] = self._instroot
-            env["IMG_NAME"] = self._name
-
-        return env
+        return {}
 
     def __get_imgname(self):
         return self.name
@@ -654,10 +585,7 @@ class BaseImageCreator(object):
             return
 
         try:
-            self.workdir = os.path.join(self.tmpdir, "build")
-            if not os.path.exists(self.workdir):
-                os.makedirs(self.workdir)
-            self.__builddir = tempfile.mkdtemp(dir = self.workdir,
+            self.__builddir = tempfile.mkdtemp(dir = self.tmpdir,
                                                prefix = "imgcreate-")
         except OSError, (err, msg):
             raise CreatorError("Failed create build directory in %s: %s" %
@@ -687,15 +615,9 @@ class BaseImageCreator(object):
             raise CreatorError("No repositories specified")
 
     def __write_fstab(self):
-        if kickstart.use_installerfw(self.ks, "fstab"):
-            # The fstab file will be generated by installer framework scripts
-            # instead.
-            return None
-        fstab_contents = self._get_fstab()
-        if fstab_contents:
-            fstab = open(self._instroot + "/etc/fstab", "w")
-            fstab.write(fstab_contents)
-            fstab.close()
+        fstab = open(self._instroot + "/etc/fstab", "w")
+        fstab.write(self._get_fstab())
+        fstab.close()
 
     def __create_minimal_dev(self):
         """Create a minimal /dev so that we don't corrupt the host /dev"""
@@ -725,18 +647,6 @@ class BaseImageCreator(object):
 
         os.umask(origumask)
 
-    def __setup_tmpdir(self):
-        if not self.enabletmpfs:
-            return
-
-        runner.show('mount -t tmpfs -o size=4G tmpfs %s' % self.workdir)
-
-    def __clean_tmpdir(self):
-        if not self.enabletmpfs:
-            return
-
-        runner.show('umount -l %s' % self.workdir)
-
     def mount(self, base_on = None, cachedir = None):
         """Setup the target filesystem in preparation for an install.
 
@@ -755,7 +665,6 @@ class BaseImageCreator(object):
                     multiple installs.
 
         """
-        self.__setup_tmpdir()
         self.__ensure_builddir()
 
         # prevent popup dialog in Ubuntu(s)
@@ -775,8 +684,7 @@ class BaseImageCreator(object):
                   "/usr/bin"):
             fs.makedirs(self._instroot + d)
 
-        if self.target_arch and self.target_arch.startswith("arm") or \
-            self.target_arch == "aarch64":
+        if self.target_arch and self.target_arch.startswith("arm"):
             self.qemu_emulator = misc.setup_qemu_emulator(self._instroot,
                                                           self.target_arch)
 
@@ -840,7 +748,6 @@ class BaseImageCreator(object):
         # reset settings of popup dialog in Ubuntu(s)
         misc.unhide_loopdev_presentation()
 
-
     def cleanup(self):
         """Unmounts the target filesystem and deletes temporary files.
 
@@ -861,14 +768,10 @@ class BaseImageCreator(object):
         if not self.__builddir:
             return
 
-        kill_proc_inchroot(self._instroot)
-
         self.unmount()
 
         shutil.rmtree(self.__builddir, ignore_errors = True)
         self.__builddir = None
-
-        self.__clean_tmpdir()
 
     def __is_excluded_pkg(self, pkg):
         if pkg in self._excluded_pkgs:
@@ -931,10 +834,6 @@ class BaseImageCreator(object):
         for pkg in self._preinstall_pkgs:
             pkg_manager.preInstall(pkg)
 
-    def __check_packages(self, pkg_manager):
-        for pkg in self.check_pkgs:
-            pkg_manager.checkPackage(pkg)
-
     def __attachment_packages(self, pkg_manager):
         if not self.ks:
             return
@@ -964,7 +863,7 @@ class BaseImageCreator(object):
             if not os.path.exists(fpath):
                 # download pkgs
                 try:
-                    fpath = grabber.myurlgrab(url.full, fpath, proxies, None)
+                    fpath = rpmmisc.myurlgrab(url, fpath, proxies, None)
                 except CreatorError:
                     raise
 
@@ -975,23 +874,18 @@ class BaseImageCreator(object):
                     fpath = os.path.join(root, fname)
                     self._attachment.append(fpath)
 
-    def install(self, repo_urls=None):
+    def install(self, repo_urls = {}):
         """Install packages into the install root.
 
         This function installs the packages listed in the supplied kickstart
         into the install root. By default, the packages are installed from the
         repository URLs specified in the kickstart.
 
-        repo_urls -- a dict which maps a repository name to a repository;
+        repo_urls -- a dict which maps a repository name to a repository URL;
                      if supplied, this causes any repository URLs specified in
                      the kickstart to be overridden.
 
         """
-        def get_ssl_verify(ssl_verify=None):
-            if ssl_verify is not None:
-                return not ssl_verify.lower().strip() == 'no'
-            else:
-                return not self.ssl_verify.lower().strip() == 'no'
 
         # initialize pkg list to install
         if self.ks:
@@ -1007,26 +901,17 @@ class BaseImageCreator(object):
             self._excluded_pkgs = None
             self._required_groups = None
 
-        if not repo_urls:
-            repo_urls = self.extrarepos
-
         pkg_manager = self.get_pkg_manager()
         pkg_manager.setup()
 
-        if hasattr(self, 'install_pkgs') and self.install_pkgs:
-            if 'debuginfo' in self.install_pkgs:
-                pkg_manager.install_debuginfo = True
-
-        for repo in kickstart.get_repos(self.ks, repo_urls, self.ignore_ksrepo):
+        for repo in kickstart.get_repos(self.ks, repo_urls):
             (name, baseurl, mirrorlist, inc, exc,
              proxy, proxy_username, proxy_password, debuginfo,
-             source, gpgkey, disable, ssl_verify, nocache,
-             cost, priority) = repo
+             source, gpgkey, disable, ssl_verify, cost, priority) = repo
 
-            ssl_verify = get_ssl_verify(ssl_verify)
             yr = pkg_manager.addRepository(name, baseurl, mirrorlist, proxy,
                         proxy_username, proxy_password, inc, exc, ssl_verify,
-                        nocache, cost, priority)
+                        cost, priority)
 
         if kickstart.exclude_docs(self.ks):
             rpm.addMacro("_excludedocs", "1")
@@ -1036,30 +921,27 @@ class BaseImageCreator(object):
             rpm.addMacro("_install_langs", kickstart.inst_langs(self.ks))
 
         try:
-            self.__preinstall_packages(pkg_manager)
-            self.__select_packages(pkg_manager)
-            self.__select_groups(pkg_manager)
-            self.__deselect_packages(pkg_manager)
-            self.__localinst_packages(pkg_manager)
-            self.__check_packages(pkg_manager)
+            try:
+                self.__preinstall_packages(pkg_manager)
+                self.__select_packages(pkg_manager)
+                self.__select_groups(pkg_manager)
+                self.__deselect_packages(pkg_manager)
+                self.__localinst_packages(pkg_manager)
 
-            BOOT_SAFEGUARD = 256L * 1024 * 1024 # 256M
-            checksize = self._root_fs_avail
-            if checksize:
-                checksize -= BOOT_SAFEGUARD
-            if self.target_arch:
-                pkg_manager._add_prob_flags(rpm.RPMPROB_FILTER_IGNOREARCH)
-            pkg_manager.runInstall(checksize)
-        except CreatorError, e:
-            raise
-        except  KeyboardInterrupt:
-            raise
-        else:
+                BOOT_SAFEGUARD = 256L * 1024 * 1024 # 256M
+                checksize = self._root_fs_avail
+                if checksize:
+                    checksize -= BOOT_SAFEGUARD
+                if self.target_arch:
+                    pkg_manager._add_prob_flags(rpm.RPMPROB_FILTER_IGNOREARCH)
+                pkg_manager.runInstall(checksize)
+            except CreatorError, e:
+                raise
+        finally:
             self._pkgs_content = pkg_manager.getAllContent()
             self._pkgs_license = pkg_manager.getPkgsLicense()
-            self._pkgs_vcsinfo = pkg_manager.getVcsInfo()
             self.__attachment_packages(pkg_manager)
-        finally:
+
             pkg_manager.close()
 
         # hook post install
@@ -1092,10 +974,10 @@ class BaseImageCreator(object):
             os.chmod(path, 0700)
 
             env = self._get_post_scripts_env(s.inChroot)
-            if 'PATH' not in env:
-                env['PATH'] = '/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin'
 
             if not s.inChroot:
+                env["INSTALL_ROOT"] = self._instroot
+                env["IMG_NAME"] = self._name
                 preexec = None
                 script = path
             else:
@@ -1104,13 +986,11 @@ class BaseImageCreator(object):
 
             try:
                 try:
-                    p = subprocess.Popen([s.interp, script],
-                                       preexec_fn = preexec,
-                                       env = env,
-                                       stdout = subprocess.PIPE,
-                                       stderr = subprocess.STDOUT)
-                    for entry in p.communicate()[0].splitlines():
-                        msger.info(entry)
+                    subprocess.call([s.interp, script],
+                                    preexec_fn = preexec,
+                                    env = env,
+                                    stdout = sys.stdout,
+                                    stderr = sys.stderr)
                 except OSError, (err, msg):
                     raise CreatorError("Failed to execute %%post script "
                                        "with '%s' : %s" % (s.interp, msg))
@@ -1155,7 +1035,7 @@ class BaseImageCreator(object):
             kickstart.RPMMacroConfig(self._instroot).apply(self.ks)
             kickstart.DesktopConfig(self._instroot).apply(ksh.desktop)
             self.__save_repo_keys(repodata)
-            kickstart.MoblinRepoConfig(self._instroot).apply(ksh.repo, repodata, self.repourl)
+            kickstart.MoblinRepoConfig(self._instroot).apply(ksh.repo, repodata)
         except:
             msger.warning("Failed to apply configuration to image")
             raise
@@ -1180,7 +1060,7 @@ class BaseImageCreator(object):
 
         md5sum = misc.get_md5sum(image_name)
         with open(image_name + ".md5sum", "w") as f:
-            f.write("%s  %s" % (md5sum, os.path.basename(image_name)))
+            f.write("%s %s" % (md5sum, os.path.basename(image_name)))
         self.outimage.append(image_name+".md5sum")
 
     def package(self, destdir = "."):
@@ -1289,8 +1169,13 @@ class BaseImageCreator(object):
         outimages.append(new_kspath)
 
         # save log file, logfile is only available in creator attrs
-        if hasattr(self, 'releaselog') and self.releaselog:
-            outimages.append(self.logfile)
+        if hasattr(self, 'logfile') and not self.logfile:
+            log_path = _rpath(self.name + ".log")
+            # touch the log file, else outimages will filter it out
+            with open(log_path, 'w') as wf:
+                wf.write('')
+            msger.set_logfile(log_path)
+            outimages.append(_rpath(self.name + ".log"))
 
         # rename iso and usbimg
         for f in os.listdir(destdir):
@@ -1303,10 +1188,10 @@ class BaseImageCreator(object):
             os.rename(_rpath(f), _rpath(newf))
             outimages.append(_rpath(newf))
 
-        # generate MD5SUMS
-        with open(_rpath("MD5SUMS"), "w") as wf:
+        # generate MANIFEST
+        with open(_rpath("MANIFEST"), "w") as wf:
             for f in os.listdir(destdir):
-                if f == "MD5SUMS":
+                if f == "MANIFEST":
                     continue
 
                 if os.path.isdir(os.path.join(destdir, f)):
@@ -1315,10 +1200,10 @@ class BaseImageCreator(object):
                 md5sum = misc.get_md5sum(_rpath(f))
                 # There needs to be two spaces between the sum and
                 # filepath to match the syntax with md5sum.
-                # This way also md5sum -c MD5SUMS can be used by users
-                wf.write("%s  %s\n" % (md5sum, f))
+                # This way also md5sum -c MANIFEST can be used by users
+                wf.write("%s *%s\n" % (md5sum, f))
 
-        outimages.append("%s/MD5SUMS" % destdir)
+        outimages.append("%s/MANIFEST" % destdir)
 
         # Filter out the nonexist file
         for fp in outimages[:]:
@@ -1355,30 +1240,3 @@ class BaseImageCreator(object):
         return self.pkgmgr(target_arch = self.target_arch,
                            instroot = self._instroot,
                            cachedir = self.cachedir)
-
-    def create_manifest(self):
-        def get_pack_suffix():
-            return '.' + self.pack_to.split('.', 1)[1]
-
-        if not os.path.exists(self.destdir):
-            os.makedirs(self.destdir)
-
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        manifest_dict = {'version': VERSION,
-                         'created': now}
-        if self.img_format:
-            manifest_dict.update({'format': self.img_format})
-
-        if hasattr(self, 'logfile') and self.logfile:
-            manifest_dict.update({'log_file': self.logfile})
-
-        if self.image_files:
-            if self.pack_to:
-                self.image_files.update({'pack': get_pack_suffix()})
-            manifest_dict.update({self.img_format: self.image_files})
-
-        msger.info('Creating manifest file...')
-        manifest_file_path = os.path.join(self.destdir, 'manifest.json')
-        with open(manifest_file_path, 'w') as fest_file:
-            json.dump(manifest_dict, fest_file, indent=4)
-        self.outimage.append(manifest_file_path)

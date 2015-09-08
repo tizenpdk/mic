@@ -17,7 +17,7 @@
 
 from pykickstart.commands.partition import *
 
-class Mic_PartData(FC4_PartData):
+class MeeGo_PartData(FC4_PartData):
     removedKeywords = FC4_PartData.removedKeywords
     removedAttrs = FC4_PartData.removedAttrs
 
@@ -25,25 +25,16 @@ class Mic_PartData(FC4_PartData):
         FC4_PartData.__init__(self, *args, **kwargs)
         self.deleteRemovedAttrs()
         self.align = kwargs.get("align", None)
-        self.extopts = kwargs.get("extopts", None)
-        self.part_type = kwargs.get("part_type", None)
-        self.uuid = kwargs.get("uuid", None)
 
     def _getArgsAsStr(self):
         retval = FC4_PartData._getArgsAsStr(self)
 
         if self.align:
             retval += " --align"
-        if self.extopts:
-            retval += " --extoptions=%s" % self.extopts
-        if self.part_type:
-            retval += " --part-type=%s" % self.part_type
-        if self.uuid:
-            retval += " --uuid=%s" % self.uuid
 
         return retval
 
-class Mic_Partition(FC4_Partition):
+class MeeGo_Partition(FC4_Partition):
     removedKeywords = FC4_Partition.removedKeywords
     removedAttrs = FC4_Partition.removedAttrs
 
@@ -53,9 +44,4 @@ class Mic_Partition(FC4_Partition):
         # the partition is aligned to start from 8096 byte boundary.
         op.add_option("--align", type="int", action="store", dest="align",
                       default=None)
-        op.add_option("--extoptions", type="string", action="store", dest="extopts",
-                      default=None)
-        op.add_option("--part-type", type="string", action="store", dest="part_type",
-                      default=None)
-        op.add_option("--uuid", dest="uuid", action="store", type="string")
         return op

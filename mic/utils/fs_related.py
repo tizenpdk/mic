@@ -24,12 +24,10 @@ import stat
 import random
 import string
 import time
-import uuid
 
+from errors import *
 from mic import msger
-from mic.utils import runner
-from mic.utils.errors import *
-
+import runner
 
 def find_binary_inchroot(binary, chroot):
     paths = ["/usr/sbin",
@@ -88,22 +86,33 @@ def resize2fs(fs, size):
     else:
         return runner.show([resize2fs, fs, "%sK" % (size / 1024,)])
 
+def my_fuser(fp):
+    fuser = find_binary_path("fuser")
+    if not os.path.exists(fp):
+        return False
+
+    rc = runner.quiet([fuser, "-s", fp])
+    if rc == 0:
+        for pid in runner.outs([fuser, fp]).split():
+            fd = open("/proc/%s/cmdline" % pid, "r")
+            cmdline = fd.read()
+            fd.close()
+            if cmdline[:-1] == "/bin/bash":
+                return True
+
+    # not found
+    return False
+
 class BindChrootMount:
     """Represents a bind mount of a directory into a chroot."""
     def __init__(self, src, chroot, dest = None, option = None):
+        self.src = src
         self.root = os.path.abspath(os.path.expanduser(chroot))
-        self.mount_option = option
-
-        self.orig_src = self.src = src
-        if os.path.islink(src):
-            self.src = os.readlink(src)
-            if not self.src.startswith('/'):
-                self.src = os.path.abspath(os.path.join(os.path.dirname(src),
-                                                        self.src))
+        self.option = option
 
         if not dest:
-            dest = self.src
-        self.dest = os.path.join(self.root, dest.lstrip('/'))
+            dest = src
+        self.dest = self.root + "/" + dest
 
         self.mounted = False
         self.mountcmd = find_binary_path("mount")
@@ -117,35 +126,30 @@ class BindChrootMount:
 
         return False
 
+    def has_chroot_instance(self):
+        lock = os.path.join(self.root, ".chroot.lock")
+        return my_fuser(lock)
+
     def mount(self):
         if self.mounted or self.ismounted():
             return
 
-        try:
-            makedirs(self.dest)
-        except OSError, err:
-            if err.errno == errno.ENOSPC:
-                msger.warning("No space left on device '%s'" % err.filename)
-                return
-
-        if self.mount_option:
-            cmdline = [self.mountcmd, "-o" ,"bind", "-o", "%s" % \
-                       self.mount_option, self.src, self.dest]
-        else:
-            cmdline = [self.mountcmd, "-o" ,"bind", self.src, self.dest]
-        rc, errout = runner.runtool(cmdline, catch=2)
+        makedirs(self.dest)
+        rc = runner.show([self.mountcmd, "--bind", self.src, self.dest])
         if rc != 0:
-            raise MountError("Bind-mounting '%s' to '%s' failed: %s" %
-                             (self.src, self.dest, errout))
-
+            raise MountError("Bind-mounting '%s' to '%s' failed" %
+                             (self.src, self.dest))
+        if self.option:
+            rc = runner.show([self.mountcmd, "--bind", "-o", "remount,%s" % self.option, self.dest])
+            if rc != 0:
+                raise MountError("Bind-remounting '%s' failed" % self.dest)
         self.mounted = True
-        if os.path.islink(self.orig_src):
-            dest = os.path.join(self.root, self.orig_src.lstrip('/'))
-            if not os.path.exists(dest):
-                os.symlink(self.src, dest)
 
     def unmount(self):
-        if self.mounted or self.ismounted():
+        if self.has_chroot_instance():
+            return
+
+        if self.ismounted():
             runner.show([self.umountcmd, "-l", self.dest])
         self.mounted = False
 
@@ -310,14 +314,8 @@ class SparseLoopbackDisk(LoopbackDisk):
         else:
             fd = os.open(self.lofile, flags)
 
-        if size <= 0:
-            size = 1
-        try:
-            os.ftruncate(fd, size)
-        except:
-            # may be limited by 2G in 32bit env
-            os.ftruncate(fd, 2**31L)
-
+        os.lseek(fd, size, os.SEEK_SET)
+        os.write(fd, '\x00')
         os.close(fd)
 
     def truncate(self, size = None):
@@ -418,14 +416,13 @@ class DiskMount(Mount):
 
 class ExtDiskMount(DiskMount):
     """A DiskMount object that is able to format/resize ext[23] filesystems."""
-    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None, fsuuid=None):
+    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None):
         DiskMount.__init__(self, disk, mountdir, fstype, rmmountdir)
         self.blocksize = blocksize
         self.fslabel = fslabel.replace("/", "")
-        self.uuid = fsuuid or str(uuid.uuid4())
+        self.uuid  = None
         self.skipformat = skipformat
         self.fsopts = fsopts
-        self.extopts = None
         self.dumpe2fs = find_binary_path("dumpe2fs")
         self.tune2fs = find_binary_path("tune2fs")
 
@@ -442,20 +439,18 @@ class ExtDiskMount(DiskMount):
             return
 
         msger.verbose("Formating %s filesystem on %s" % (self.fstype, self.disk.device))
-        cmdlist = [self.mkfscmd, "-F", "-L", self.fslabel, "-m", "1", "-b",
-                   str(self.blocksize), "-U", self.uuid]
-        if self.extopts:
-            cmdlist.extend(self.extopts.split())
-        cmdlist.extend([self.disk.device])
-
-        rc, errout = runner.runtool(cmdlist, catch=2)
+        rc = runner.show([self.mkfscmd,
+                          "-F", "-L", self.fslabel,
+                          "-m", "1", "-b", str(self.blocksize),
+                          self.disk.device]) # str(self.disk.size / self.blocksize)])
         if rc != 0:
-            raise MountError("Error creating %s filesystem on disk %s:\n%s" %
-                             (self.fstype, self.disk.device, errout))
+            raise MountError("Error creating %s filesystem on disk %s" % (self.fstype, self.disk.device))
 
-        if not self.extopts:
-            msger.debug("Tuning filesystem on %s" % self.disk.device)
-            runner.show([self.tune2fs, "-c0", "-i0", "-Odir_index", "-ouser_xattr,acl", self.disk.device])
+        out = runner.outs([self.dumpe2fs, '-h', self.disk.device])
+
+        self.uuid = self.__parse_field(out, "Filesystem UUID")
+        msger.debug("Tuning filesystem on %s" % self.disk.device)
+        runner.show([self.tune2fs, "-c0", "-i0", "-Odir_index", "-ouser_xattr,acl", self.disk.device])
 
     def __resize_filesystem(self, size = None):
         current_size = os.stat(self.disk.lofile)[stat.ST_SIZE]
@@ -529,13 +524,11 @@ class ExtDiskMount(DiskMount):
 
 class VfatDiskMount(DiskMount):
     """A DiskMount object that is able to format vfat/msdos filesystems."""
-    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None, fsuuid = None):
+    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None):
         DiskMount.__init__(self, disk, mountdir, fstype, rmmountdir)
         self.blocksize = blocksize
         self.fslabel = fslabel.replace("/", "")
-        rand1 = random.randint(0, 2**16 - 1)
-        rand2 = random.randint(0, 2**16 - 1)
-        self.uuid = fsuuid or "%04X-%04X" % (rand1, rand2)
+        self.uuid = "%08X" % int(time.time())
         self.skipformat = skipformat
         self.fsopts = fsopts
         self.fsckcmd = find_binary_path("fsck." + self.fstype)
@@ -546,8 +539,7 @@ class VfatDiskMount(DiskMount):
             return
 
         msger.verbose("Formating %s filesystem on %s" % (self.fstype, self.disk.device))
-        rc = runner.show([self.mkfscmd, "-n", self.fslabel,
-                          "-i", self.uuid.replace("-", ""), self.disk.device])
+        rc = runner.show([self.mkfscmd, "-n", self.fslabel, "-i", self.uuid, self.disk.device])
         if rc != 0:
             raise MountError("Error creating %s filesystem on disk %s" % (self.fstype,self.disk.device))
 
@@ -613,12 +605,12 @@ class VfatDiskMount(DiskMount):
 
 class BtrfsDiskMount(DiskMount):
     """A DiskMount object that is able to format/resize btrfs filesystems."""
-    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None, fsuuid = None):
+    def __init__(self, disk, mountdir, fstype, blocksize, fslabel, rmmountdir=True, skipformat = False, fsopts = None):
         self.__check_btrfs()
         DiskMount.__init__(self, disk, mountdir, fstype, rmmountdir)
         self.blocksize = blocksize
         self.fslabel = fslabel.replace("/", "")
-        self.uuid  = fsuuid or None
+        self.uuid  = None
         self.skipformat = skipformat
         self.fsopts = fsopts
         self.blkidcmd = find_binary_path("blkid")
@@ -839,20 +831,11 @@ class LoopDevice(object):
         self.kpartxcmd = find_binary_path("kpartx")
         self.losetupcmd = find_binary_path("losetup")
 
-    def register(self, device):
-        self.device = device
-        self.loopid = None
-        self.created = True
-
-    def reg_atexit(self):
         import atexit
         atexit.register(self.close)
 
     def _genloopid(self):
         import glob
-        if not glob.glob("/dev/loop[0-9]*"):
-            return 10
-
         fint = lambda x: x[9:].isdigit() and int(x[9:]) or 0
         maxid = 1 + max(filter(lambda x: x<100,
                                map(fint, glob.glob("/dev/loop[0-9]*"))))
@@ -891,10 +874,11 @@ class LoopDevice(object):
                 else:
                     self.created = True
                     return
-
-            mknod = find_binary_path('mknod')
-            rc = runner.show([mknod, '-m664', self.device, 'b', '7', str(self.loopid)])
-            if rc != 0:
+            try:
+                os.mknod(self.device,
+                         0664 | stat.S_IFBLK,
+                         os.makedev(7, self.loopid))
+            except:
                 raise MountError("Failed to create device %s" % self.device)
             else:
                 self.created = True
@@ -905,7 +889,7 @@ class LoopDevice(object):
                 self.cleanup()
                 self.device = None
             except MountError, e:
-                raise CreatorError("%s" % e)
+                msger.error("%s" % e)
 
     def cleanup(self):
 
@@ -914,93 +898,47 @@ class LoopDevice(object):
 
 
         if self._kpseek(self.device):
+            if self.created:
+                for i in range(3, os.sysconf("SC_OPEN_MAX")):
+                    try:
+                        os.close(i)
+                    except:
+                        pass
             runner.quiet([self.kpartxcmd, "-d", self.device])
         if self._loseek(self.device):
             runner.quiet([self.losetupcmd, "-d", self.device])
         # FIXME: should sleep a while between two loseek
         if self._loseek(self.device):
             msger.warning("Can't cleanup loop device %s" % self.device)
-        elif self.loopid:
+        else:
             os.unlink(self.device)
 
-DEVICE_PIDFILE_DIR = "/var/tmp/mic/device"
-DEVICE_LOCKFILE = "/var/lock/__mic_loopdev.lock"
-
 def get_loop_device(losetupcmd, lofile):
-    global DEVICE_PIDFILE_DIR
-    global DEVICE_LOCKFILE
-
     import fcntl
-    makedirs(os.path.dirname(DEVICE_LOCKFILE))
-    fp = open(DEVICE_LOCKFILE, 'w')
+    fp = open("/var/lock/__mic_loopdev.lock", 'w')
     fcntl.flock(fp, fcntl.LOCK_EX)
     try:
-        loopdev = None
         devinst = LoopDevice()
-
-        # clean up left loop device first
-        clean_loop_devices()
-
-        # provide an avaible loop device
-        rc, out = runner.runtool([losetupcmd, "--find"])
-        if rc == 0 and out:
-            loopdev = out.split()[0]
-            devinst.register(loopdev)
-        if not loopdev or not os.path.exists(loopdev):
-            devinst.create()
-            loopdev = devinst.device
-
-        # setup a loop device for image file
-        rc = runner.show([losetupcmd, loopdev, lofile])
-        if rc != 0:
-            raise MountError("Failed to setup loop device for '%s'" % lofile)
-
-        devinst.reg_atexit()
-
-        # try to save device and pid
-        makedirs(DEVICE_PIDFILE_DIR)
-        pidfile = os.path.join(DEVICE_PIDFILE_DIR, os.path.basename(loopdev))
-        if os.path.exists(pidfile):
-            os.unlink(pidfile)
-        with open(pidfile, 'w') as wf:
-            wf.write(str(os.getpid()))
-
-    except MountError, err:
-        raise CreatorError("%s" % str(err))
+        devinst.create()
     except:
-        raise
+        rc, out = runner.runtool([losetupcmd, "-f"])
+        if rc != 0:
+            raise MountError("1-Failed to allocate loop device for '%s'" % lofile)
+        loopdev = out.split()[0]
+    else:
+        loopdev = devinst.device
     finally:
         try:
             fcntl.flock(fp, fcntl.LOCK_UN)
             fp.close()
-            os.unlink(DEVICE_LOCKFILE)
+            os.unlink('/var/lock/__mic_loopdev.lock')
         except:
             pass
+
+    rc = runner.show([losetupcmd, loopdev, lofile])
+    if rc != 0:
+        raise MountError("2-Failed to allocate loop device for '%s'" % lofile)
 
     return loopdev
 
-def clean_loop_devices(piddir=DEVICE_PIDFILE_DIR):
-    if not os.path.exists(piddir) or not os.path.isdir(piddir):
-        return
-
-    for loopdev in os.listdir(piddir):
-        pidfile = os.path.join(piddir, loopdev)
-        try:
-            with open(pidfile, 'r') as rf:
-                devpid = int(rf.read())
-        except:
-            devpid = None
-
-        # if the process using this device is alive, skip it
-        if not devpid or os.path.exists(os.path.join('/proc', str(devpid))):
-            continue
-
-        # try to clean it up
-        try:
-            devinst = LoopDevice()
-            devinst.register(os.path.join('/dev', loopdev))
-            devinst.cleanup()
-            os.unlink(pidfile)
-        except:
-            pass
 

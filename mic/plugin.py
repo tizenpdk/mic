@@ -16,17 +16,14 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os, sys
-
-from mic import msger
-from mic import pluginbase
+import msger
+import pluginbase
 from mic.conf import configmgr
 from mic.utils import errors
-
 
 __ALL__ = ['PluginMgr', 'pluginmgr']
 
 PLUGIN_TYPES = ["imager", "backend"] # TODO  "hook"
-
 
 class PluginMgr(object):
     plugin_dirs = {}
@@ -77,10 +74,9 @@ class PluginMgr(object):
                             self.plugin_dirs[pdir] = True
                             msger.debug("Plugin module %s:%s imported"\
                                         % (mod, pymod.__file__))
-                        except ImportError, err:
-                            msg = 'Failed to load plugin %s/%s: %s' \
-                                % (os.path.basename(pdir), mod, err)
-                            msger.verbose(msg)
+                        except ImportError, e:
+                            msger.warning('Loading failed, skip plugin %s/%s'\
+                                          % (os.path.basename(pdir), mod))
 
             del(sys.path[0])
 

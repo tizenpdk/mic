@@ -28,12 +28,9 @@ import yum
 from mic import msger
 from mic.kickstart import ksparser
 from mic.utils import misc, rpmmisc
-from mic.utils.grabber import TextProgress
 from mic.utils.proxy import get_proxy_for
 from mic.utils.errors import CreatorError
-from mic.utils.safeurl import SafeURL
 from mic.imager.baseimager import BaseImageCreator
-
 
 YUMCONF_TEMP = """[main]
 installroot=$installroot
@@ -47,10 +44,6 @@ sslverify=1
 """
 
 class MyYumRepository(yum.yumRepo.YumRepository):
-    def __init__(self, repoid, nocache):
-        super(MyYumRepository, self).__init__(repoid)
-        self.nocache = nocache
-
     def __del__(self):
         pass
 
@@ -75,21 +68,9 @@ class MyYumRepository(yum.yumRepo.YumRepository):
 
         m2c_connection = None
         if not self.sslverify:
-            try:
-                import M2Crypto
-                m2c_connection = M2Crypto.SSL.Connection.clientPostConnectionCheck
-                M2Crypto.SSL.Connection.clientPostConnectionCheck = None
-            except ImportError, err:
-                raise CreatorError("%s, please try to install python-m2crypto" % str(err))
-
-        proxy = None
-        if url:
-            proxy = get_proxy_for(url)
-        else:
-            proxy = get_proxy_for(self.urls[0])
-
-        if proxy:
-            self.proxy = str(proxy)
+            import M2Crypto
+            m2c_connection = M2Crypto.SSL.Connection.clientPostConnectionCheck
+            M2Crypto.SSL.Connection.clientPostConnectionCheck = None
 
         size = int(size) if size else None
         rvalue = super(MyYumRepository, self)._getFile(url,
@@ -132,10 +113,6 @@ class Yum(BackendPlugin, yum.YumBase):
 
         self.__pkgs_license = {}
         self.__pkgs_content = {}
-        self.__pkgs_vcsinfo = {}
-        self.check_pkgs = []
-
-        self.install_debuginfo = False
 
     def doFileLogSetup(self, uid, logfile):
         # don't do the file log for the livecd as it can lead to open fds
@@ -155,6 +132,14 @@ class Yum(BackendPlugin, yum.YumBase):
         self._delSacks()
         yum.YumBase.close(self)
         self.closeRpmDB()
+
+        if not os.path.exists("/etc/fedora-release") and \
+           not os.path.exists("/etc/meego-release"):
+            for i in range(3, os.sysconf("SC_OPEN_MAX")):
+                try:
+                    os.close(i)
+                except:
+                    pass
 
     def __del__(self):
         pass
@@ -192,9 +177,6 @@ class Yum(BackendPlugin, yum.YumBase):
     def preInstall(self, pkg):
         # FIXME: handle pre-install package
         return None
-
-    def checkPackage(self, pkg):
-        self.check_pkgs.append(pkg)
 
     def selectPackage(self, pkg):
         """Select a given package.
@@ -262,15 +244,16 @@ class Yum(BackendPlugin, yum.YumBase):
 
     def addRepository(self, name, url = None, mirrorlist = None, proxy = None,
                       proxy_username = None, proxy_password = None,
-                      inc = None, exc = None, ssl_verify=True, nocache=False,
-                      cost = None, priority=None):
+                      inc = None, exc = None, ssl_verify=True, cost = None,
+                      priority=None):
         # TODO: Handle priority attribute for repos
         def _varSubstitute(option):
             # takes a variable and substitutes like yum configs do
             option = option.replace("$basearch", rpmUtils.arch.getBaseArch())
             option = option.replace("$arch", rpmUtils.arch.getCanonArch())
             return option
-        repo = MyYumRepository(name, nocache)
+
+        repo = MyYumRepository(name)
 
         # Set proxy
         repo.proxy = proxy
@@ -278,7 +261,12 @@ class Yum(BackendPlugin, yum.YumBase):
         repo.proxy_password = proxy_password
 
         if url:
-            repo.baseurl.append(_varSubstitute(url.full))
+            repo.baseurl.append(_varSubstitute(url))
+
+        # check LICENSE files
+        if not rpmmisc.checkRepositoryEULA(name, repo):
+            msger.warning('skip repo:%s for failed EULA confirmation' % name)
+            return None
 
         if mirrorlist:
             repo.mirrorlist = _varSubstitute(mirrorlist)
@@ -354,8 +342,7 @@ class Yum(BackendPlugin, yum.YumBase):
             pkg_long_name = misc.RPM_FMT % {
                                 'name': pkg.name,
                                 'arch': pkg.arch,
-                                'version': pkg.version,
-                                'release': pkg.release
+                                'ver_rel': pkg.printVer(),
                             }
             self.__pkgs_content[pkg_long_name] = pkg.files
             license = pkg.license
@@ -364,22 +351,13 @@ class Yum(BackendPlugin, yum.YumBase):
             else:
                 self.__pkgs_license[license] = [pkg_long_name]
 
-            if pkg.name in self.check_pkgs:
-                self.check_pkgs.remove(pkg.name)
-
-        if self.check_pkgs:
-            raise CreatorError('Packages absent in image: %s' % ','.join(self.check_pkgs))
-
         total_count = len(dlpkgs)
         cached_count = 0
         download_total_size = sum(map(lambda x: int(x.packagesize), dlpkgs))
 
-        msger.info("\nChecking packages cached ...")
+        msger.info("\nChecking packages cache and packages integrity ...")
         for po in dlpkgs:
             local = po.localPkg()
-            repo = filter(lambda r: r.id == po.repoid, self.repos.listEnabled())[0]
-            if repo.nocache and os.path.exists(local):
-                os.unlink(local)
             if not os.path.exists(local):
                 continue
             if not self.verifyPkg(local, po, False):
@@ -406,13 +384,16 @@ class Yum(BackendPlugin, yum.YumBase):
             raise CreatorError("No enough space used for installing, "
                                "please resize partition size in ks file")
 
-        msger.info("Packages: %d Total, %d Cached, %d Missed" \
+        msger.info("%d packages to be installed, "
+                   "%d packages gotten from cache, "
+                   "%d packages to be downloaded" \
                    % (total_count, cached_count, total_count - cached_count))
 
         try:
             repos = self.repos.listEnabled()
             for repo in repos:
-                repo.setCallback(TextProgress(total_count - cached_count))
+                repo.setCallback(
+                            rpmmisc.TextProgress(total_count - cached_count))
 
             self.downloadPkgs(dlpkgs)
             # FIXME: sigcheck?
@@ -452,9 +433,6 @@ class Yum(BackendPlugin, yum.YumBase):
         finally:
             msger.disable_logstderr()
 
-    def getVcsInfo(self):
-        return self.__pkgs_vcsinfo
-
     def getAllContent(self):
         return self.__pkgs_content
 
@@ -473,18 +451,18 @@ class Yum(BackendPlugin, yum.YumBase):
     def package_url(self, pkgname):
         pkgs = self.pkgSack.searchNevra(name=pkgname)
         if pkgs:
-            pkg = pkgs[0]
+            proxy = None
+            proxies = None
+            url = pkgs[0].remote_url
+            repoid = pkgs[0].repoid
+            repos = filter(lambda r: r.id == repoid, self.repos.listEnabled())
 
-            repo = pkg.repo
-            url = SafeURL(repo.baseurl[0]).join(pkg.remote_path)
-
-            proxy = repo.proxy
+            if repos:
+                proxy = repos[0].proxy
             if not proxy:
                 proxy = get_proxy_for(url)
             if proxy:
                 proxies = {str(url.split(':')[0]): str(proxy)}
-            else:
-                proxies = None
 
             return (url, proxies)
 

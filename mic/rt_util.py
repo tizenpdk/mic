@@ -15,245 +15,226 @@
 # with this program; if not, write to the Free Software Foundation, Inc., 59
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
-from __future__ import with_statement
-import os
-import sys
-import glob
-import re
+import os, sys
+import string
 import shutil
-import subprocess
-import ctypes
+import re
 
-from mic import bootstrap, msger
+from mic import bootstrap
+from mic import msger
 from mic.conf import configmgr
-from mic.utils import errors, proxy
-from mic.utils.fs_related import find_binary_path, makedirs
-from mic.chroot import setup_chrootenv, cleanup_chrootenv, ELF_arch
+from mic.utils import errors
+import mic.utils.misc as misc
+from mic.utils.proxy import get_proxy_for
 
-_libc = ctypes.cdll.LoadLibrary(None)
-_errno = ctypes.c_int.in_dll(_libc, "errno")
-_libc.personality.argtypes = [ctypes.c_ulong]
-_libc.personality.restype = ctypes.c_int
-_libc.unshare.argtypes = [ctypes.c_int,]
-_libc.unshare.restype = ctypes.c_int
+BOOTSTRAP_URL="http://download.tizen.org/tools/micbootstrap"
 
-expath = lambda p: os.path.abspath(os.path.expanduser(p))
-
-PER_LINUX32=0x0008
-PER_LINUX=0x0000
-personality_defs = {
-    'x86_64': PER_LINUX, 'ppc64': PER_LINUX, 'sparc64': PER_LINUX,
-    'i386': PER_LINUX32, 'i586': PER_LINUX32, 'i686': PER_LINUX32,
-    'ppc': PER_LINUX32, 'sparc': PER_LINUX32, 'sparcv9': PER_LINUX32,
-    'ia64' : PER_LINUX, 'alpha' : PER_LINUX,
-    's390' : PER_LINUX32, 's390x' : PER_LINUX,
-}
-
-def condPersonality(per=None):
-    if per is None or per in ('noarch',):
+def runmic_in_runtime(runmode, opts, ksfile, argv=None):
+    dist = misc.get_distro()[0]
+    if not runmode or not dist or "MeeGo" == dist:
         return
-    if personality_defs.get(per, None) is None:
-        return
-    res = _libc.personality(personality_defs[per])
-    if res == -1:
-        raise OSError(_errno.value, os.strerror(_errno.value))
 
-def inbootstrap():
-    if os.path.exists(os.path.join("/", ".chroot.lock")):
-        return True
-    return (os.stat("/").st_ino != 2)
-
-def bootstrap_mic(argv=None):
-
-
-    def mychroot():
-        os.chroot(rootdir)
-        os.chdir(cwd)
-
-    # by default, sys.argv is used to run mic in bootstrap
     if not argv:
         argv = sys.argv
-    if argv[0] not in ('/usr/bin/mic', 'mic'):
-        argv[0] = '/usr/bin/mic'
+    else:
+        argv = argv[:]
 
-    cropts = configmgr.create
-    bsopts = configmgr.bootstrap
-    distro = bsopts['distro_name'].lower()
+    if runmode == 'bootstrap':
+        msger.info("Use bootstrap runtime environment")
+        name = "micbootstrap"
+        try:
+            repostrs = configmgr.bootstraps[name]
+        except:
+            repostrs = "name:%s,baseurl:%s," (name, BOOTSTRAP_URL)
+            proxy = get_proxy_for(BOOTSTRAP_URL)
+            if proxy:
+                repostrs += "proxy:%s" % proxy
 
-    rootdir = bsopts['rootdir']
-    pkglist = bsopts['packages']
+        repolist = []
+        if not name:
+            # use ks repo to create bootstrap
+            # so far it can't be effective for mic not in repo
+            #name = os.path.basename(ksfile)
+            #repostrs = misc.get_repostrs_from_ks(opts['ks'])
+            #for item in repostrs:
+            #    repolist.append(convert_repostr(item))
+            msger.info("cannot find valid bootstrap, please check the config")
+            msger.info("Back to native running")
+            return
+        else:
+            for reponame, repostr in repostrs.items():
+                repolist.append(convert_repostr(repostr))
+        runmic_in_bootstrap(name, argv, opts, ksfile, repolist)
+    else:
+        raise errors.RuntimeError('Invalid runmode: %s ' % runmode)
+
+    sys.exit(0)
+
+def compare_rpmversion(ver1, ver2):
+    return ver1.split('.')[0] == ver2.split('.')[0] and \
+        ver1.split('.')[1] == ver2.split('.')[1]
+
+def convert_repostr(repostr):
+    repo = {}
+    for item in repostr.split(','):
+        loc = item.find(':')
+        opt = item[0:loc]
+        if opt in ('name', 'baseurl', 'mirrolist', 'proxy', \
+            'proxy_username', 'proxy_password', 'debuginfo', \
+            'source', 'gpgkey', 'disable'):
+            if len(item) > loc:
+                repo[opt] = item[loc+1:]
+            else:
+                repo[opt] = None
+    return repo
+
+def select_bootstrap(repomd, cachedir, bootstrapdir):
+    cfgmgr = configmgr
+    lvl = msger.get_loglevel()
+    msger.set_loglevel('quiet')
+    repo_rpmver = misc.get_rpmver_in_repo(repomd)
+    if not repo_rpmver:
+        msger.set_loglevel(lvl)
+        return (None, None)
+
+    # Check avaliable bootstrap
+    bootstrap_env = bootstrap.Bootstrap(homedir = bootstrapdir)
+    for bs in bootstrap_env.list():
+        if compare_rpmversion(repo_rpmver, bs['rpm']):
+            return (bs['name'], {})
+
+    for bsname, bsrepo in cfgmgr.bootstraps.items():
+        repolist = []
+        for repo in bsrepo.keys():
+            repolist.append(bsrepo[repo])
+
+        rpmver = None
+        try:
+            repomd = misc.get_metadata_from_repos(repolist, cachedir)
+            rpmver = misc.get_rpmver_in_repo(repomd)
+        except errors.CreatorError, e:
+            msger.set_loglevel(lvl)
+            raise
+
+        if not rpmver:
+            continue
+        if compare_rpmversion(repo_rpmver, rpmver):
+            msger.set_loglevel(lvl)
+            return (bsname, bsrepo)
+    msger.set_loglevel(lvl)
+    return (None, None)
+
+def runmic_in_bootstrap(name, argv, opts, ksfile, repolist):
+    bootstrap_env = bootstrap.Bootstrap(homedir = opts['bootstrapdir'])
+    bootstrap_lst = bootstrap_env.bootstraps
+    setattr(bootstrap_env, 'rootdir', name)
+    if not bootstrap_lst or not name in bootstrap_lst:
+        msger.info("Creating bootstrap %s under %s" % \
+                   (name, bootstrap_env.homedir))
+        bootstrap_env.create(name, repolist)
+
+    msger.info("Use bootstrap: %s" % bootstrap_env.rootdir)
+    # copy mic
+    msger.info("Sync native mic to bootstrap")
+    copy_mic(bootstrap_env.rootdir)
+
+    # bind mounts , opts['cachedir'], opts['tmpdir']
     cwd = os.getcwd()
+    lst = [cwd, opts['outdir']]
+    if ksfile:
+        ksfp = os.path.abspath(os.path.expanduser(ksfile))
+        lst.append(os.path.dirname(ksfp))
+    if opts['logfile']:
+        logfile = os.path.abspath(os.path.expanduser(opts['logfile']))
+        lst.append(os.path.dirname(logfile))
+    if opts['local_pkgs_path']:
+        lppdir = os.path.abspath(os.path.expanduser(opts['local_pkgs_path']))
+        lst.append(lppdir)
 
-    # create bootstrap and run mic in bootstrap
-    bsenv = bootstrap.Bootstrap(rootdir, distro, cropts['arch'])
-    bsenv.logfile = cropts['logfile']
-    # rootdir is regenerated as a temp dir
-    rootdir = bsenv.rootdir
+    # TBD local repo
 
-    if 'optional' in bsopts:
-        optlist = bsopts['optional']
-    else:
-        optlist = []
+    # make unique and remain the original order
+    lst = sorted(set(lst), key=lst.index)
 
-    try:
-        msger.info("Creating %s bootstrap ..." % distro)
-        bsenv.create(cropts['repomd'], pkglist, optlist)
+    bindmounts = ';'.join(map(lambda p: os.path.abspath(os.path.expanduser(p)),
+                              lst))
 
-        # bootstrap is relocated under "bootstrap"
-        if os.path.exists(os.path.join(rootdir, "bootstrap")):
-            rootdir = os.path.join(rootdir, "bootstrap")
-
-        bsenv.dirsetup(rootdir)
-        sync_mic(rootdir, plugin=cropts['plugin_dir'])
-
-        #FIXME: sync the ks file to bootstrap
-        if "/" == os.path.dirname(os.path.abspath(configmgr._ksconf)):
-            safecopy(configmgr._ksconf, rootdir)
-
-        msger.info("Start mic in bootstrap: %s\n" % rootdir)
-        bsarch = ELF_arch(rootdir)
-        if bsarch in personality_defs:
-            condPersonality(bsarch)
-        bindmounts = get_bindmounts(cropts)
-        ret = bsenv.run(argv, cwd, rootdir, bindmounts)
-
-    except errors.BootstrapError, err:
-        raise errors.CreatorError("Failed to download/install bootstrap package " \
-                                  "or the package is in bad format: %s" % err)
-    except RuntimeError, err:
-        #change exception type but keep the trace back
-        value, tb = sys.exc_info()[1:]
-        raise errors.CreatorError, value, tb
-    else:
-        sys.exit(ret)
-    finally:
-        bsenv.cleanup()
-
-def get_bindmounts(cropts):
-    binddirs =  [
-                  os.getcwd(),
-                  cropts['tmpdir'],
-                  cropts['cachedir'],
-                  cropts['outdir'],
-                  cropts['local_pkgs_path'],
-                ]
-    bindfiles = [
-                  cropts['logfile'],
-                  configmgr._ksconf,
-                ]
-
-    for lrepo in cropts['localrepos']:
-        binddirs.append(lrepo)
-
-    bindlist = map(expath, filter(None, binddirs))
-    bindlist += map(os.path.dirname, map(expath, filter(None, bindfiles)))
-    bindlist = sorted(set(bindlist))
-    bindmounts = ';'.join(bindlist)
-    return bindmounts
-
-
-def get_mic_binpath():
-    fp = None
-    try:
-        import pkg_resources # depends on 'setuptools'
-        dist = pkg_resources.get_distribution('mic')
-        # the real script is under EGG_INFO/scripts
-        if dist.has_metadata('scripts/mic'):
-            fp = os.path.join(dist.egg_info, "scripts/mic")
-    except ImportError:
-        pass
-    except pkg_resources.DistributionNotFound:
-        pass
-
-
-    if fp:
-        return fp
-
-    # not found script if 'flat' egg installed
-    try:
-        return find_binary_path('mic')
-    except errors.CreatorError:
-        raise errors.BootstrapError("Can't find mic binary in host OS")
-
+    msger.info("Start mic command in bootstrap")
+    bootstrap_env.run(name, argv, cwd, bindmounts)
 
 def get_mic_modpath():
     try:
         import mic
     except ImportError:
-        raise errors.BootstrapError("Can't find mic module in host OS")
-    path = os.path.abspath(mic.__file__)
-    return os.path.dirname(path)
+        raise errors.BootstrapError('Can\'t find mic module in host OS.')
+    else:
+        path = os.path.abspath(mic.__file__)
+        return os.path.dirname(path)
+
+def get_mic_binpath():
+    # FIXME: please use mic.find_binary_path()
+    path = os.environ['PATH']
+    paths = string.split(path, os.pathsep)
+    for pth in paths:
+        fn = os.path.join(pth, 'mic')
+        if os.path.isfile(fn):
+            return fn
+
+    msger.warning("Can't find mic command")
+    # FIXME: how to handle unfound case?
 
 def get_mic_libpath():
-    return os.getenv("MIC_LIBRARY_PATH", "/usr/lib/mic")
+    # so far mic lib path is hard coded
+    # TBD
+    return "/usr/lib/mic"
 
 # the hard code path is prepared for bootstrap
-def sync_mic(bootstrap, binpth = '/usr/bin/mic',
-             libpth='/usr/lib',
-             plugin='/usr/lib/mic/plugins',
-             pylib = '/usr/lib/python2.7/site-packages',
-             conf = '/etc/mic/mic.conf'):
-    _path = lambda p: os.path.join(bootstrap, p.lstrip('/'))
+def copy_mic(bootstrap_pth, bin_pth = '/usr/bin', lib_pth='/usr/lib', \
+             pylib_pth = '/usr/lib/python2.7/site-packages'):
+    # copy python lib files
+    mic_pylib = get_mic_modpath()
+    bs_mic_pylib = bootstrap_pth + os.path.join(pylib_pth, 'mic')
+    if os.path.commonprefix([mic_pylib, bs_mic_pylib]) == mic_pylib:
+        raise errors.BootstrapError('Invalid Bootstrap: %s' % bootstrap_pth)
+    shutil.rmtree(bs_mic_pylib, ignore_errors = True)
+    shutil.copytree(mic_pylib, bs_mic_pylib)
+    clean_files(".*\.py[co]$", bs_mic_pylib)
 
-    micpaths = {
-                 'binpth': get_mic_binpath(),
-                 'libpth': get_mic_libpath(),
-                 'plugin': plugin,
-                 'pylib': get_mic_modpath(),
-                 'conf': '/etc/mic/mic.conf',
-               }
+    # copy lib files
+    mic_libpth = get_mic_libpath()
+    bs_mic_libpth = bootstrap_pth + os.path.join(lib_pth, 'mic')
+    if os.path.commonprefix([mic_libpth, bs_mic_libpth]) == mic_libpth:
+        raise errors.BootstrapError('Invalid Bootstrap: %s' % bootstrap_pth)
+    shutil.rmtree(bs_mic_libpth, ignore_errors = True)
+    shutil.copytree(mic_libpth, bs_mic_libpth)
+    os.system('cp -af %s %s' % (mic_libpth, os.path.dirname(bs_mic_libpth)))
 
-    if not os.path.exists(_path(pylib)):
-        pyptn = '/usr/lib/python?.?/site-packages'
-        pylibs = glob.glob(_path(pyptn))
-        if pylibs:
-            pylib = pylibs[0].replace(bootstrap, '')
-        else:
-            raise errors.BootstrapError("Can't find python site dir in: %s" %
-                                        bootstrap)
+    # copy bin files
+    mic_binpth = get_mic_binpath()
+    bs_mic_binpth = bootstrap_pth + os.path.join(bin_pth, 'mic')
+    shutil.rmtree(bs_mic_binpth, ignore_errors = True)
+    shutil.copy2(mic_binpth, bs_mic_binpth)
 
-    for key, value in micpaths.items():
-        try:
-            safecopy(value, _path(eval(key)), False, ["*.pyc", "*.pyo"])
-        except (OSError, IOError), err:
-            raise errors.BootstrapError(err)
+    # copy mic.conf
+    mic_cfgpth = '/etc/mic/mic.conf'
+    bs_mic_cfgpth = bootstrap_pth + mic_cfgpth
+    if not os.path.exists(os.path.dirname(bs_mic_cfgpth)):
+        os.makedirs(os.path.dirname(bs_mic_cfgpth))
+    shutil.copy2(mic_cfgpth, bs_mic_cfgpth)
 
-    # auto select backend
-    conf_str = file(_path(conf)).read()
-    conf_str = re.sub("pkgmgr\s*=\s*.*", "pkgmgr=auto", conf_str)
-    with open(_path(conf), 'w') as wf:
-        wf.write(conf_str)
+    # remove yum backend
+    try:
+        yumpth = "/usr/lib/mic/plugins/backend/yumpkgmgr.py"
+        os.unlink(bootstrap_pth + yumpth)
+    except:
+        pass
 
-    # chmod +x /usr/bin/mic
-    os.chmod(_path(binpth), 0777)
-
-    # correct python interpreter
-    mic_cont = file(_path(binpth)).read()
-    mic_cont = "#!/usr/bin/python\n" + mic_cont
-    with open(_path(binpth), 'w') as wf:
-        wf.write(mic_cont)
-
-
-def safecopy(src, dst, symlinks=False, ignore_ptns=()):
-    if os.path.isdir(src):
-        if os.path.isdir(dst):
-            dst = os.path.join(dst, os.path.basename(src))
-        if os.path.exists(dst):
-            shutil.rmtree(dst, ignore_errors=True)
-
-        src = src.rstrip('/')
-        # check common prefix to ignore copying itself
-        if dst.startswith(src + '/'):
-            ignore_ptns = list(ignore_ptns) + [ os.path.basename(src) ]
-
-        ignores = shutil.ignore_patterns(*ignore_ptns)
-        try:
-            shutil.copytree(src, dst, symlinks, ignores)
-        except (OSError, IOError):
-            shutil.rmtree(dst, ignore_errors=True)
-            raise
-    else:
-        if not os.path.isdir(dst):
-            makedirs(os.path.dirname(dst))
-
-        shutil.copy2(src, dst)
+def clean_files(pattern, dir):
+    if not os.path.exists(dir):
+        return
+    for f in os.listdir(dir):
+        entry = os.path.join(dir, f)
+        if os.path.isdir(entry):
+            clean_files(pattern, entry)
+        elif re.match(pattern, entry):
+            os.unlink(entry)

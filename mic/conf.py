@@ -18,28 +18,22 @@
 import os, sys, re
 import ConfigParser
 
-from mic import msger
-from mic import kickstart
-from mic.utils import misc, runner, proxy, errors
-
+import msger
+import kickstart
+from .utils import misc, runner, proxy, errors
 
 DEFAULT_GSITECONF = '/etc/mic/mic.conf'
 
-
 def get_siteconf():
-    if hasattr(sys, 'real_prefix'):
-        return os.path.join(sys.prefix, "etc/mic/mic.conf")
-    else:
-        return DEFAULT_GSITECONF
+    mic_path = os.path.dirname(__file__)
 
-def inbootstrap():
-    if os.path.exists(os.path.join("/", ".chroot.lock")):
-        return True
-    return (os.stat("/").st_ino != 2)
+    m = re.match(r"(?P<prefix>.*)\/lib(64)?\/.*", mic_path)
+    if m and m.group('prefix') != "/usr":
+        return os.path.join(m.group('prefix'), "etc/mic/mic.conf")
+
+    return DEFAULT_GSITECONF
 
 class ConfigMgr(object):
-    prefer_backends = ["zypp", "yum"]
-
     DEFAULTS = {'common': {
                     "distro_name": "Default Distribution",
                     "plugin_dir": "/usr/lib/mic/plugins", # TODO use prefix also?
@@ -48,9 +42,10 @@ class ConfigMgr(object):
                     "tmpdir": '/var/tmp/mic',
                     "cachedir": '/var/tmp/mic/cache',
                     "outdir": './mic-output',
-                    "destdir": None,
+                    "bootstrapdir": '/var/tmp/mic/bootstrap',
+
                     "arch": None, # None means auto-detect
-                    "pkgmgr": "auto",
+                    "pkgmgr": "yum",
                     "name": "output",
                     "ksfile": None,
                     "ks": None,
@@ -58,22 +53,15 @@ class ConfigMgr(object):
                     "local_pkgs_path": None,
                     "release": None,
                     "logfile": None,
-                    "releaselog": False,
                     "record_pkgs": [],
+                    "rpmver": None,
                     "pack_to": None,
                     "name_prefix": None,
-                    "name_suffix": None,
                     "proxy": None,
                     "no_proxy": None,
-                    "ssl_verify": "yes",
                     "copy_kernel": False,
-                    "install_pkgs": None,
-                    "check_pkgs": [],
-                    "repourl": {},
-                    "localrepos": [],  # save localrepos
-                    "runtime": "bootstrap",
-                    "extrarepos": {},
-                    "ignore_ksrepo": False,
+
+                    "runtime": None,
                 },
                 'chroot': {
                     "saveto": None,
@@ -81,11 +69,7 @@ class ConfigMgr(object):
                 'convert': {
                     "shell": False,
                 },
-                'bootstrap': {
-                    "rootdir": '/var/tmp/mic-bootstrap',
-                    "packages": [],
-                    "distro_name": "",
-                },
+                'bootstraps': {},
                }
 
     # make the manager class as singleton
@@ -129,7 +113,7 @@ class ConfigMgr(object):
 
     def __set_ksconf(self, ksconf):
         if not os.path.isfile(ksconf):
-            raise errors.KsError('Cannot find ks file: %s' % ksconf)
+            msger.error('Cannot find ks file: %s' % ksconf)
 
         self.__ksconf = ksconf
         self._parse_kickstart(ksconf)
@@ -138,21 +122,11 @@ class ConfigMgr(object):
     _ksconf = property(__get_ksconf, __set_ksconf)
 
     def _parse_siteconf(self, siteconf):
-
-        if os.getenv("MIC_PLUGIN_DIR"):
-            self.common["plugin_dir"] = os.environ["MIC_PLUGIN_DIR"]
-
-        if siteconf and not os.path.exists(siteconf):
-            msger.warning("cannot find config file: %s" % siteconf)
-            siteconf = None
-
         if not siteconf:
-            self.common["distro_name"] = "Tizen"
-            # append common section items to other sections
-            for section in self.DEFAULTS.keys():
-                if section != "common":
-                    getattr(self, section).update(self.common)
+            return
 
+        if not os.path.exists(siteconf):
+            msger.warning("cannot read config file: %s" % siteconf)
             return
 
         parser = ConfigParser.SafeConfigParser()
@@ -164,7 +138,7 @@ class ConfigMgr(object):
 
         # append common section items to other sections
         for section in self.DEFAULTS.keys():
-            if section != "common":
+            if section != "common" and not section.startswith('bootstrap'):
                 getattr(self, section).update(self.common)
 
         # check and normalize the scheme of proxy url
@@ -173,7 +147,7 @@ class ConfigMgr(object):
             if m:
                 scheme = m.group(1)
                 if scheme not in ('http', 'https', 'ftp', 'socks'):
-                    raise errors.ConfigError("%s: proxy scheme is incorrect" % siteconf)
+                    msger.error("%s: proxy scheme is incorrect" % siteconf)
             else:
                 msger.warning("%s: proxy url w/o scheme, use http as default"
                               % siteconf)
@@ -181,64 +155,59 @@ class ConfigMgr(object):
 
         proxy.set_proxies(self.create['proxy'], self.create['no_proxy'])
 
-        # bootstrap option handling
-        self.set_runtime(self.create['runtime'])
-        if isinstance(self.bootstrap['packages'], basestring):
-            packages = self.bootstrap['packages'].replace('\n', ' ')
-            if packages.find(',') != -1:
-                packages = packages.split(',')
-            else:
-                packages = packages.split()
-            self.bootstrap['packages'] = packages
+        for section in parser.sections():
+            if section.startswith('bootstrap'):
+                name = section
+                repostr = {}
+                for option in parser.options(section):
+                    if option == 'name':
+                        name = parser.get(section, 'name')
+                        continue
+
+                    val = parser.get(section, option)
+                    if '_' in option:
+                        (reponame, repoopt) = option.split('_')
+                        if repostr.has_key(reponame):
+                            repostr[reponame] += "%s:%s," % (repoopt, val)
+                        else:
+                            repostr[reponame] = "%s:%s," % (repoopt, val)
+                        continue
+
+                    if val.split(':')[0] in ('file', 'http', 'https', 'ftp'):
+                        if repostr.has_key(option):
+                            repostr[option] += "name:%s,baseurl:%s," % \
+                                                (option, val)
+                        else:
+                            repostr[option]  = "name:%s,baseurl:%s," % \
+                                                (option, val)
+                        continue
+
+                self.bootstraps[name] = repostr
 
     def _parse_kickstart(self, ksconf=None):
         if not ksconf:
             return
-
-        ksconf = misc.normalize_ksfile(ksconf,
-                                       self.create['release'],
-                                       self.create['arch'])
 
         ks = kickstart.read_kickstart(ksconf)
 
         self.create['ks'] = ks
         self.create['name'] = os.path.splitext(os.path.basename(ksconf))[0]
 
-        self.create['name'] = misc.build_name(ksconf,
-                                              self.create['release'],
-                                              self.create['name_prefix'],
-                                              self.create['name_suffix'])
-
-        self.create['destdir'] = self.create['outdir']
-        if self.create['release'] is not None:
-            self.create['destdir'] = "%s/%s/images/%s/" % (self.create['outdir'],
-                                                           self.create['release'],
-                                                           self.create['name'])
-            self.create['name'] = self.create['release'] + '_' + self.create['name']
-
-            if not self.create['logfile']:
-                self.create['logfile'] = os.path.join(self.create['destdir'],
-                                                      self.create['name'] + ".log")
-                self.create['releaselog'] = True
-                self.set_logfile()
+        if self.create['name_prefix']:
+            self.create['name'] = "%s-%s" % (self.create['name_prefix'],
+                                             self.create['name'])
 
         msger.info("Retrieving repo metadata:")
-        ksrepos = kickstart.get_repos(ks,
-                                      self.create['extrarepos'],
-                                      self.create['ignore_ksrepo'])
+        ksrepos = misc.get_repostrs_from_ks(ks)
         if not ksrepos:
             raise errors.KsError('no valid repos found in ks file')
-
-        for repo in ksrepos:
-            if hasattr(repo, 'baseurl') and repo.baseurl.startswith("file:"):
-                repourl = repo.baseurl.replace('file:', '')
-                repourl = "/%s" % repourl.lstrip('/')
-                self.create['localrepos'].append(repourl)
 
         self.create['repomd'] = misc.get_metadata_from_repos(
                                                     ksrepos,
                                                     self.create['cachedir'])
         msger.raw(" DONE")
+
+        self.create['rpmver'] = misc.get_rpmver_in_repo(self.create['repomd'])
 
         target_archlist, archlist = misc.get_arch(self.create['repomd'])
         if self.create['arch']:
@@ -249,7 +218,7 @@ class ConfigMgr(object):
         else:
             if len(target_archlist) == 1:
                 self.create['arch'] = str(target_archlist[0])
-                msger.info("Use detected arch %s." % target_archlist[0])
+                msger.info("\nUse detected arch %s." % target_archlist[0])
             else:
                 raise errors.ConfigError("Please specify a valid arch, "
                                          "the choice can be: %s" \
@@ -260,27 +229,5 @@ class ConfigMgr(object):
         # check selinux, it will block arm and btrfs image creation
         misc.selinux_check(self.create['arch'],
                            [p.fstype for p in ks.handler.partition.partitions])
-
-    def set_logfile(self, logfile = None):
-        if not logfile:
-            logfile = self.create['logfile']
-
-        logfile_dir = os.path.dirname(self.create['logfile'])
-        if not os.path.exists(logfile_dir):
-            os.makedirs(logfile_dir)
-        msger.set_interactive(False)
-        if inbootstrap():
-            mode = 'a'
-        else:
-            mode = 'w'
-        msger.set_logfile(self.create['logfile'], mode)
-
-    def set_runtime(self, runtime):
-        if runtime not in ("bootstrap", "native"):
-            raise errors.CreatorError("Invalid runtime mode: %s" % runtime)
-
-        if misc.get_distro()[0] in ("tizen", "Tizen"):
-            runtime = "native"
-        self.create['runtime'] = runtime
 
 configmgr = ConfigMgr()

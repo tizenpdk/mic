@@ -1,12 +1,10 @@
-from desktop import Mic_Desktop
-from micrepo import Mic_Repo, Mic_RepoData
-from partition import Mic_Partition
-from installerfw import Mic_installerfw
+import desktop
+import moblinrepo
+import partition
 
 __all__ = (
-    "Mic_Desktop",
-    "Mic_Repo",
-    "Mic_RepoData",
-    "Mic_Partition",
-    "Mic_installerfw",
+    "Moblin_Desktop",
+    "Moblin_Repo",
+    "Moblin_RepoData",
+    "MeeGo_Partition",
 )
