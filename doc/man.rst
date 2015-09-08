@@ -32,7 +32,6 @@ Subcommands:
  | help(?)      give detailed help on a specific sub-command
  | fs           create fs image, which is also chroot directory
  | livecd       create live CD image, used for CD booting
- | liveusb      create live USB image, used for USB booting
  | loop         create loop image, including multi-partitions
  | raw          create raw image, containing multi-partitions
 
@@ -108,9 +107,7 @@ Options:
 
 Examples:
 
- | mic convert tizen.iso liveusb
  | mic convert tizen.usbimg livecd
- | mic cv --shell tizen.iso liveusb
 
 Advanced Usage
 ==============

@@ -135,7 +135,7 @@ class MicCmd(cmdln.Cmdln):
                   help="Launch shell before packaging the converted image")
     def do_convert(self, _subcmd, opts, *args):
         """${cmd_name}: convert image format
-
+ 
         Usage:
             mic convert <imagefile> <destformat>
 
@@ -174,7 +174,6 @@ class MicCmd(cmdln.Cmdln):
                                   % (srcformat, destformat))
         maptab = {
                     "livecd": "iso",
-                    "liveusb": "usbimg",
                     "loop": "img",
                  }
         if destformat in maptab:

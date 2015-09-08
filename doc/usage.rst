@@ -44,7 +44,7 @@ Image formulation support
   * Including partition table and all the partitions
   * The image is bootable directly
 
-- Livecd/liveusb
+- Livecd
 
   * Mainly used for an ia32 build, it can be burned to CD or usbstick, which can be booted into a live system or installation UI
 
@@ -70,7 +70,6 @@ Create
   help(?)            give detailed help on a specific sub-command
   fs                 create fs image, which is also a chroot directory
   livecd             create live CD image, used for CD booting
-  liveusb            create live USB image, used for USB booting
   loop               create loop image, including multi-partitions
   raw                create raw image, containing multi-partitions
 
@@ -182,9 +181,7 @@ This command is used for converting an image to another format.
 
 ::
 
-   mic cv tizen.iso liveusb
    mic cv tizen.usbimg livecd
-   mic cv --shell tizen.iso liveusb
 
 Getting Start
 -------------
