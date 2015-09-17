@@ -69,7 +69,6 @@ Create
 
   help(?)            give detailed help on a specific sub-command
   fs                 create fs image, which is also a chroot directory
-  livecd             create live CD image, used for CD booting
   loop               create loop image, including multi-partitions
   raw                create raw image, containing multi-partitions
 
