@@ -31,7 +31,6 @@ Subcommands:
 
  | help(?)      give detailed help on a specific sub-command
  | fs           create fs image, which is also chroot directory
- | livecd       create live CD image, used for CD booting
  | loop         create loop image, including multi-partitions
  | raw          create raw image, containing multi-partitions
 
@@ -70,7 +69,6 @@ Options for raw image:
 Examples:
 
  | mic create loop tizen.ks
- | mic create livecd tizen.ks --release=latest
  | mic cr fs tizen.ks --local-pkgs-path=localrpm
 
 chroot
@@ -107,7 +105,7 @@ Options:
 
 Examples:
 
- | mic convert tizen.usbimg livecd
+
 
 Advanced Usage
 ==============

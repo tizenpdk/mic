@@ -173,7 +173,6 @@ class MicCmd(cmdln.Cmdln):
             raise errors.CreatorError("Can't convert from %s to %s" \
                                   % (srcformat, destformat))
         maptab = {
-                    "livecd": "iso",
                     "loop": "img",
                  }
         if destformat in maptab:

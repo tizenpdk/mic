@@ -8,7 +8,7 @@ The tool offers three major functions:
 
 - image creation
 - image conversion bwtween two different formats
-- chrooting into an image
+- chrooting into an image 
 
 With the MIC tool, users can create different types of images for different
 verticals, including live CD images, live USB images, raw images for KVM,
@@ -35,7 +35,7 @@ Resource
 License
 -------
 MIC is Open Source and is distributed under the GPLv2 License.
-Please see the COPYING file included with this software
+Please see the COPYING file included with this software 
 
 
 Contacts
