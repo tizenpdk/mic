@@ -70,13 +70,12 @@ Create
   help(?)            give detailed help on a specific sub-command
   fs                 create fs image, which is also a chroot directory
   loop               create loop image, including multi-partitions
-  raw                create raw image, containing multi-partitions
 
 - <ksfile>:
 
 The kickstart file is a simple text file, containing a list of items about image partition, setup, Bootloader, packages to be installed, etc, each identified by a keyword.
 
-In Tizen, the released image will have a ks file along with image. For example, you can download the ks file from: http://download.tizen.org/releases/daily/trunk/ivi/latest/images/ivi-min...
+In Tizen, the released image will have a ks file along with image. For example, you can download the ks file from: http://download.tizen.org/releases/weekly/tizen/mobile/latest/images/...
 
 - Options include:
 

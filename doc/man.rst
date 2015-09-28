@@ -20,8 +20,7 @@ USAGE
 
 create
 ------
-This command is used to create various images, including live CD, live USB,
-loop, raw.
+This command is used to create various images, including loop.
 
 Usage:
 
@@ -32,7 +31,6 @@ Subcommands:
  | help(?)      give detailed help on a specific sub-command
  | fs           create fs image, which is also chroot directory
  | loop         create loop image, including multi-partitions
- | raw          create raw image, containing multi-partitions
 
 Options:
 
@@ -60,10 +58,6 @@ Options for fs image:
 Options for loop image:
   --shrink       whether to shrink loop images to minimal size
   --compress-image=COMPRESS_IMAGE  compress all loop images with 'gz' or 'bz2' or 'lzo'
-  --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
-
-Options for raw image:
-  --compress-image=COMPRESS_IMAGE  compress all raw images with 'gz' or 'bz2' or 'lzo'
   --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
 
 Examples:
