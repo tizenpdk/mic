@@ -5,15 +5,14 @@
 SYNOPSIS
 ========
 
-| mic create SUBCOMMAND <ksfile> [OPTION]
-| mic chroot [OPTION] <imgfile>
-| mic convert [OPTION] <imgfile> <format>
+| mic [GLOBAL-OPTS] create SUBCOMMAND <ksfile> [OPTION]
+| mic [GLOBAL-OPTS] chroot [OPTION] <imgfile>
 
 DESCRIPTION
 ===========
 
 The tools `mic` is used to create and manipulate images for Linux distributions.
-It is composed of three subcommand: `create`, `convert`, `chroot`.
+It is composed of two subcommand: `create`, `chroot`.
 
 USAGE
 =====
@@ -23,14 +22,14 @@ create
 This command is used to create various images, including loop.
 
 Usage:
-
- | mic create(cr) SUBCOMMAND <ksfile> [OPTION]
+ | mic [GLOBAL-OPTS] create(cr) SUBCOMMAND <ksfile> [OPTION]
 
 Subcommands:
 
- | help(?)      give detailed help on a specific sub-command
+ | auto         auto detect image type from magic header
  | fs           create fs image, which is also chroot directory
  | loop         create loop image, including multi-partitions
+ | qcow         create qcow image
 
 Options:
 
@@ -81,25 +80,6 @@ Options:
 Examples:
 
  | mic chroot loop.img
- | mic chroot tizen.iso
- | mic ch -s tizenfs tizen.usbimg
-
-convert
--------
-This command is used for converting an image to another format.
-
-Usage:
-
- | mic convert(cv) <imagefile> <destformat>
-
-Options:
-
-   -h, --help  show the help message
-   -S, --shell  launch interactive shell before packing the new image in the converting
-
-Examples:
-
-
 
 Advanced Usage
 ==============
