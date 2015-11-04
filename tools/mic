@@ -126,12 +126,13 @@ def create_parser(parser):
     parser.set_defaults(alias="cr")
 
     subparsers  = parser.add_subparsers(title='Subcommands', dest='subcommand')
+    auto_parser = subparsers.add_parser('auto', parents=[parent_parser], help='auto detect image type from magic header')
+    
     fs_parser   = subparsers.add_parser('fs', parents=[parent_parser], 
-                                        help='auto detect image type from magic header')
+                                        help='create fs image')
     fs_parser.add_argument("--include-src", dest = "include_src",action = "store_true",
                            default = False, help = "Generate a image with source rpms included")
                   
-    auto_parser = subparsers.add_parser('auto', parents=[parent_parser], help='create fs image')
     loop_parser = subparsers.add_parser('loop', parents=[parent_parser], help='create loop image')
 
     loop_parser.add_argument("--compress-disk-image", dest="compress_image",
