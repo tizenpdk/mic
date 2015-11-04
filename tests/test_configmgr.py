@@ -68,7 +68,8 @@ class ConfigMgrTest(unittest.TestCase):
         self.configmgr._ksconf = KSCONF
         self.assertTrue(isinstance(self.configmgr.create['ks'], KickstartParser))
         #self.assertEqual(self.configmgr.create['name'], 'test')
-        self.assertDictEqual(repomd[0], self.configmgr.create['repomd'][0])
+        #self.assertDictEqual(repomd[0], self.configmgr.create['repomd'][0])
+        self.assertEqual(repomd[0], self.configmgr.create['repomd'][0])
         self.assertEqual(self.configmgr.create['arch'], 'i686')
 
 if __name__ == "__main__":
