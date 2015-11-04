@@ -61,33 +61,42 @@ class ArchiveTest(unittest.TestCase):
 
     def test_compress_negtive_file_path_is_required(self):
         """Test if the first parameter: file path is empty"""
-        with self.assertRaises(OSError):
-            archive.compress('', 'bz2')
+        self.assertRaises(OSError, archive.compress, '', 'bz2')
+        #with self.assertRaises(OSError):
+        #    archive.compress('', 'bz2')
 
     def test_compress_negtive_compress_format_is_required(self):
         """Test if the second parameter: compress format is empty"""
-        with self.assertRaises(ValueError):
-            archive.compress(self.relative_file, '')
+        self.assertRaises(ValueError, archive.compress,
+            self.relative_file, '')
+        #with self.assertRaises(ValueError):
+        #    archive.compress(self.relative_file, '')
 
     def test_compress_negtive_parameters_are_all_required(self):
         """Test if two parameters are both empty"""
-        with self.assertRaises(OSError):
-            archive.compress('', '')
+        self.assertRaises(OSError, archive.compress, '', '')
+        #with self.assertRaises(OSError):
+        #    archive.compress('', '')
 
     def test_compress_negtive_file_not_exist(self):
         """Test target file does not exist"""
-        with self.assertRaises(OSError):
-            archive.compress('a.py', 'bz2')
+        self.assertRaises(OSError, archive.compress, 'a.py', 'bz2')
+        #with self.assertRaises(OSError):
+        #    archive.compress('a.py', 'bz2')
 
     def test_compress_negtive_file_is_dir(self):
         """Test target is one direcoty, which is not supported"""
-        with self.assertRaises(OSError):
-            archive.compress(self.relative_dir, 'bz2')
+        self.assertRaises(OSError, archive.compress,
+            self.relative_dir, 'bz2')
+       # with self.assertRaises(OSError):
+       #     archive.compress(self.relative_dir, 'bz2')
 
     def test_compress_negtive_wrong_compress_format(self):
         """Test wrong compress format"""
-        with self.assertRaises(ValueError):
-            archive.compress(self.relative_file, 'bzip2')
+        self.assertRaises(ValueError, archive.compress,
+            self.relative_file, 'bzip2')
+        #with self.assertRaises(ValueError):
+        #   archive.compress(self.relative_file, 'bzip2')
 
     def _compress_negtive_gz_command_not_exists(self):
         #TODO: test if command like 'pigz', 'gzip' does not exist
@@ -127,8 +136,9 @@ class ArchiveTest(unittest.TestCase):
 
     def test_decompress_negtive_file_path_is_required(self):
         """Test if the first parameter: file to be uncompressed is empty"""
-        with self.assertRaises(OSError):
-            archive.decompress('', 'bz')
+        self.assertRaises(OSError, archive.compress, '', 'bz')
+        #with self.assertRaises(OSError):
+        #    archive.decompress('', 'bz')
 
     def test_decompress_compress_format_is_empty(self):
         """Test if the second parameter: compress format is empty string"""
@@ -141,18 +151,23 @@ class ArchiveTest(unittest.TestCase):
 
     def test_decompress_negtive_parameters_are_empty(self):
         """Test if two parameters are both empty string"""
-        with self.assertRaises(OSError):
-            archive.decompress('', '')
+        self.assertRaises(OSError, archive.decompress, '', '')
+        #with self.assertRaises(OSError):
+        #    archive.decompress('', '')
 
     def test_decompress_negtive_file_not_exist(self):
         """Test decompress target does not exist"""
-        with self.assertRaises(OSError):
-            archive.decompress('tresa.py', 'bz2')
+        self.assertRaises(OSError, archive.decompress,
+            'tresa.py', 'bz2')
+        #with self.assertRaises(OSError):
+        #    archive.decompress('tresa.py', 'bz2')
 
     def test_decompress_negtive_path_is_dir(self):
         """Test decompress target is a directory"""
-        with self.assertRaises(OSError):
-            archive.decompress(self.relative_dir, 'bz2')
+        self.assertRaises(OSError, archive.decompress,
+            self.relative_dir, 'bz2')
+        #with self.assertRaises(OSError):
+        #    archive.decompress(self.relative_dir, 'bz2')
 
     def _decompress_negtive_not_corresponding(self):
         # TODO: test if path is .lzo, but given format is bz2
@@ -160,13 +175,17 @@ class ArchiveTest(unittest.TestCase):
 
     def test_decompress_negtive_wrong_compress_format(self):
         """Test wrong decompress format"""
-        with self.assertRaises(ValueError):
-            archive.decompress(self.relative_file, 'bzip2')
+        self.assertRaises(ValueError, archive.decompress,
+            self.relative_file, 'bzip2')
+        #with self.assertRaises(ValueError):
+        #    archive.decompress(self.relative_file, 'bzip2')
 
     def test_decompress_negtive_wrong_file_format(self):
         """Test wrong target format"""
-        with self.assertRaises(Exception):
-            archive.decompress(self.wrong_format_file, 'bz2')
+        self.assertRaises(Exception, archive.decompress,
+            self.wrong_format_file, 'bz2')
+        #with self.assertRaises(Exception):
+        #    archive.decompress(self.wrong_format_file, 'bz2')
 
     def test_decompress_gz(self):
         """Test decompress
@@ -261,18 +280,23 @@ class ArchiveTest(unittest.TestCase):
 
     def test_make_archive_negtive_archive_name_is_required(self):
         """Test if first parameter: file path is empty"""
-        with self.assertRaises(Exception):
-            archive.make_archive('', self.relative_dir)
+        self.assertRaises(Exception, archive.make_archive,
+            '', self.relative_dir)
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('', self.relative_dir)
 
     def test_extract_archive_negtive_archive_name_is_required(self):
         """Test if first parameter: file path is empty"""
-        with self.assertRaises(Exception):
-            archive.extract_archive('', self.relative_dir)
+        self.assertRaises(Exception, archive.extract_archive,
+            '', self.relative_dir)
+        #with self.assertRaises(Exception):
+        #    archive.extract_archive('', self.relative_dir)
 
     def test_make_archive_negtive_target_name_is_required(self):
         """Test if second parameter: target name is empty"""
-        with self.assertRaises(Exception):
-            archive.make_archive('a.zip', '')
+        self.assertRaises(Exception, archive.make_archive, 'a.zip', '')
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('a.zip', '')
 
     def _extract_archive_negtive_target_name_is_required(self):
         # Not sure if the current dir will be used ?
@@ -281,42 +305,54 @@ class ArchiveTest(unittest.TestCase):
 
     def test_make_archive_negtive_parameters_are_empty(self):
         """Test if both parameters are empty"""
-        with self.assertRaises(Exception):
-            archive.make_archive('', '')
+        self.assertRaises(Exception, archive.make_archive, '', '')
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('', '')
 
     def test_extract_archive_negtive_parameters_are_empty(self):
         """Test if both parameters are empty"""
-        with self.assertRaises(Exception):
-            archive.extract_archive('', '')
+        self.assertRaises(Exception, archive.extract_archive, '', '')
+        #with self.assertRaises(Exception):
+        #    archive.extract_archive('', '')
 
     def test_make_archive_negtive_target_path_not_exists(self):
         """Test if file path does not exist"""
         fake_file = 'abcdfsdf'
-        with self.assertRaises(Exception):
-            archive.make_archive('a.tar', fake_file)
+        self.assertRaises(Exception, archive.make_archive,
+            'a.tar', fake_file)
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('a.tar', fake_file)
 
-        with self.assertRaises(Exception):
-            archive.make_archive('a.zip', fake_file)
+        self.assertRaises(Exception, archive.make_archive,
+            'a.zip', fake_file)
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('a.zip', fake_file)
 
     def test_extract_archive_negtive_path_not_exists(self):
         """Test if file path does not exist"""
         fake_file = 'abcdfsdf'
-        with self.assertRaises(Exception):
-            archive.extract_archive(fake_file, self.relative_dir)
+        self.assertRaises(Exception, archive.extract_archive,
+            fake_file, self.relative_dir)
+        #with self.assertRaises(Exception):
+        #    archive.extract_archive(fake_file, self.relative_dir)
 
     def test_extract_archive_negtive_target_is_file(self):
         """Test if the extract target is file"""
         out_file = '%s.tar' % self.relative_dir
         self.assertTrue(archive.make_archive(out_file, self.relative_dir))
         self.assertTrue(os.path.exists(out_file))
-        with self.assertRaises(Exception):
-            archive.extract_archive(out_file, self.relative_file)
+        self.assertRaises(Exception, archive.extract_archive,
+            out_file, self.relative_file)
+        #with self.assertRaises(Exception):
+        #    archive.extract_archive(out_file, self.relative_file)
         os.remove(out_file)
 
     def test_make_archive_wrong_format(self):
         """Test wrong make_archive format"""
-        with self.assertRaises(Exception):
-            archive.make_archive('a.sfsfrwe', self.relative_dir)
+        self.assertRaises(Exception, archive.make_archive,
+            'a.sfsfrwe', self.relative_dir)
+        #with self.assertRaises(Exception):
+        #    archive.make_archive('a.sfsfrwe', self.relative_dir)
 
     def test_make_archive_tar_with_different_name(self):
         """ Test make_archive format: tar
