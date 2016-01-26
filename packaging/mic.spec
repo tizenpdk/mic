@@ -1,4 +1,5 @@
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
+%{!?python_version: %define python_version %(%{__python} -c "import sys; sys.stdout.write(sys.version[:3])")}
 
 %define rc_version 0
 
@@ -20,6 +21,10 @@ Requires:   python >= 2.6
 Requires:   python-urlgrabber >= 3.9.0
 %if 0%{?suse_version} || 0%{?tizen_version:1}
 Requires:   python-xml
+%endif
+
+%if "%{?python_version}" < "2.7"
+Requires:   python-argparse
 %endif
 
 %if 0%{?tizen_version:1}

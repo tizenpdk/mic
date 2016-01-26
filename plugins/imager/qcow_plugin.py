@@ -64,7 +64,7 @@ class QcowPlugin(ImagerPlugin):
     name = 'qcow'
 
     @classmethod
-    def do_create(cls, subcmd, opts, *args):
+    def do_create(cls, args):
         """${cmd_name}: create qcow image
 
         Usage:
@@ -72,11 +72,11 @@ class QcowPlugin(ImagerPlugin):
 
         ${cmd_option_list}
         """
-        if len(args) != 1:
-            raise errors.Usage("Extra arguments given")
+        if args is None:
+            raise errors.Usage("Invalid arguments")
 
         creatoropts = configmgr.create
-        ksconf = args[0]
+        ksconf = args.ksfile
 
         if creatoropts['runtime'] == "bootstrap":
             configmgr._ksconf = ksconf
@@ -110,7 +110,7 @@ class QcowPlugin(ImagerPlugin):
 
         if not pkgmgr:
             raise errors.CreatorError("Can't find backend: %s, "
-                                      "available choices: %s" %
+                                       "available choices: %s" %
                                       (creatoropts['pkgmgr'],
                                        ','.join(backends.keys())))
 
