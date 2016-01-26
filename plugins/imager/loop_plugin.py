@@ -20,7 +20,7 @@ import shutil
 import tempfile
 
 from mic import chroot, msger, rt_util
-from mic.utils import misc, fs_related, errors, cmdln
+from mic.utils import misc, fs_related, errors
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
 from mic.imager.loop import LoopImageCreator, load_mountpoints
@@ -30,18 +30,7 @@ class LoopPlugin(ImagerPlugin):
     name = 'loop'
 
     @classmethod
-    @cmdln.option("--compress-disk-image", dest="compress_image",
-                  type='choice', choices=("gz", "bz2", "lzo"), default=None,
-                  help="Same with --compress-image")
-                  # alias to compress-image for compatibility
-    @cmdln.option("--compress-image", dest="compress_image",
-                  type='choice', choices=("gz", "bz2", "lzo"), default=None,
-                  help="Compress all loop images with 'gz' or 'bz2' or 'lzo',"
-                  "Note: if you want to use 'lzo', package 'lzop' is needed to"
-                  "be installed manually.")
-    @cmdln.option("--shrink", action='store_true', default=False,
-                  help="Whether to shrink loop images to minimal size")
-    def do_create(self, subcmd, opts, *args):
+    def do_create(self, args):
         """${cmd_name}: create loop image
 
         Usage:
@@ -50,16 +39,16 @@ class LoopPlugin(ImagerPlugin):
         ${cmd_option_list}
         """
 
-        if len(args) != 1:
-            raise errors.Usage("Extra arguments given")
+        if args is None:
+            raise errors.Usage("Invalid arguments")
 
         creatoropts = configmgr.create
-        ksconf = args[0]
+        ksconf = args.ksfile
 
         if creatoropts['runtime'] == "bootstrap":
             configmgr._ksconf = ksconf
             rt_util.bootstrap_mic()
-        
+
         recording_pkgs = []
         if len(creatoropts['record_pkgs']) > 0:
             recording_pkgs = creatoropts['record_pkgs']
@@ -94,8 +83,8 @@ class LoopPlugin(ImagerPlugin):
 
         creator = LoopImageCreator(creatoropts,
                                    pkgmgr,
-                                   opts.compress_image,
-                                   opts.shrink)
+                                   args.compress_image,
+                                   args.shrink)
 
         if len(recording_pkgs) > 0:
             creator._recording_pkgs = recording_pkgs
@@ -230,8 +219,8 @@ class LoopPlugin(ImagerPlugin):
             raise
 
         try:
-            if len(cmd) != 0:
-                cmdline = ' '.join(cmd)
+            if cmd is not None:
+                cmdline = cmd
             else:
                 cmdline = "/bin/bash"
             envcmd = fs_related.find_binary_inchroot("env", extmnt)

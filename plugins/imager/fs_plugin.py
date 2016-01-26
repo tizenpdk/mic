@@ -16,7 +16,7 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 from mic import chroot, msger, rt_util
-from mic.utils import cmdln, misc, errors, fs_related
+from mic.utils import misc, errors, fs_related
 from mic.imager import fs
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
@@ -26,12 +26,7 @@ class FsPlugin(ImagerPlugin):
     name = 'fs'
 
     @classmethod
-    @cmdln.option("--include-src",
-                  dest = "include_src",
-                  action = "store_true",
-                  default = False,
-                  help = "Generate a image with source rpms included")
-    def do_create(self, subcmd, opts, *args):
+    def do_create(self, args):
         """${cmd_name}: create fs image
 
         Usage:
@@ -40,11 +35,11 @@ class FsPlugin(ImagerPlugin):
         ${cmd_option_list}
         """
 
-        if len(args) != 1:
-            raise errors.Usage("Extra arguments given")
+        if args is None:
+            raise errors.Usage("Invalid arguments.")
 
         creatoropts = configmgr.create
-        ksconf = args[0]
+        ksconf = args.ksfile
 
         if creatoropts['runtime'] == 'bootstrap':
             configmgr._ksconf = ksconf
@@ -83,7 +78,7 @@ class FsPlugin(ImagerPlugin):
                                        ','.join(backends.keys())))
 
         creator = fs.FsImageCreator(creatoropts, pkgmgr)
-        creator._include_src = opts.include_src
+        creator._include_src = args.include_src
 
         if len(recording_pkgs) > 0:
             creator._recording_pkgs = recording_pkgs
@@ -98,7 +93,7 @@ class FsPlugin(ImagerPlugin):
             creator.mount(None, creatoropts["cachedir"])
             creator.install()
             #Download the source packages ###private options
-            if opts.include_src:
+            if args.include_src:
                 installed_pkgs =  creator.get_installed_packages()
                 msger.info('--------------------------------------------------')
                 msger.info('Generating the image with source rpms included ...')
