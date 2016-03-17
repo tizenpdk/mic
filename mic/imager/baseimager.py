@@ -993,6 +993,18 @@ class BaseImageCreator(object):
                      the kickstart to be overridden.
 
         """
+        def checkScriptletError(dirname, suffix):
+            if os.path.exists(dirname):
+                list = os.listdir(dirname)
+                for line in list:
+                    filepath = os.path.join(dirname, line)
+                    if os.path.isfile(filepath) and 0 < line.find(suffix):
+                        return True
+                    else:
+                        continue
+             
+            return False
+            
         def get_ssl_verify(ssl_verify=None):
             if ssl_verify is not None:
                 return not ssl_verify.lower().strip() == 'no'
@@ -1073,6 +1085,9 @@ class BaseImageCreator(object):
         finally:
             pkg_manager.close()
 
+        if checkScriptletError(self._instroot + "/tmp/.postscript/error/", "_error"):
+            raise CreatorError('scriptlet errors occurred')
+            
         # hook post install
         self.postinstall()
 
