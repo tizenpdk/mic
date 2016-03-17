@@ -844,7 +844,7 @@ class LoopDevice(object):
     def register(self, device):
         self.device = device
         self.loopid = None
-        self.created = True
+        #self.created = True
 
     def reg_atexit(self):
         import atexit
