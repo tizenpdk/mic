@@ -20,7 +20,6 @@ image format, a very useful function for those sensitive to image format.
 It can also provide plugin mechanism for developers to expand image type or
 image options, and even to hook.
 
-
 Resource
 --------
  * SITE: https://www.tizen.org/
