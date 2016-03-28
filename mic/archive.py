@@ -258,7 +258,7 @@ def _do_tar(archive_name, target_name):
         target_dir = os.path.dirname(target_name)
         target_name = os.path.basename(target_name)
         file_list.append(target_name)
-    cmdln = ["tar", "-S", "-C", target_dir, "-cf", archive_name]
+    cmdln = ["tar", "-C", target_dir, "-cf", archive_name]
     cmdln.extend(file_list)
     _call_external(cmdln)
 
@@ -273,7 +273,7 @@ def _do_untar(archive_name, target_dir=None):
     """
     if not target_dir:
         target_dir = os.getcwd()
-    cmdln = ["tar", "-S", "-C", target_dir, "-xf", archive_name]
+    cmdln = ["tar", "-C", target_dir, "-xf", archive_name]
     (returncode, stdout, stderr) = _call_external(cmdln)
     if returncode != 0:
         raise OSError, os.linesep.join([stdout, stderr])
