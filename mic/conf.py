@@ -74,6 +74,7 @@ class ConfigMgr(object):
                     "runtime": "bootstrap",
                     "extrarepos": {},
                     "ignore_ksrepo": False,
+                    "strict_mode": False,
                 },
                 'chroot': {
                     "saveto": None,
@@ -276,8 +277,8 @@ class ConfigMgr(object):
         msger.set_logfile(self.create['logfile'], mode)
 
     def set_runtime(self, runtime):
-        if runtime not in ("bootstrap", "native"):
-            raise errors.CreatorError("Invalid runtime mode: %s" % runtime)
+        if runtime != "bootstrap":
+            raise errors.CreatorError("Invalid runtime mode: %s, only 'bootstrap' mode is allowed." % runtime)
 
         if misc.get_distro()[0] in ("tizen", "Tizen"):
             runtime = "native"

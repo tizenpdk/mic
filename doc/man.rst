@@ -5,36 +5,31 @@
 SYNOPSIS
 ========
 
-| mic create SUBCOMMAND <ksfile> [OPTION]
-| mic chroot [OPTION] <imgfile>
-| mic convert [OPTION] <imgfile> <format>
+| mic [GLOBAL-OPTS] create SUBCOMMAND <ksfile> [OPTION]
+| mic [GLOBAL-OPTS] chroot [OPTION] <imgfile>
 
 DESCRIPTION
 ===========
 
 The tools `mic` is used to create and manipulate images for Linux distributions.
-It is composed of three subcommand: `create`, `convert`, `chroot`. 
+It is composed of two subcommand: `create`, `chroot`.
 
 USAGE
 =====
 
 create
 ------
-This command is used to create various images, including live CD, live USB, 
-loop, raw.
+This command is used to create various images, including loop.
 
 Usage:
-
- | mic create(cr) SUBCOMMAND <ksfile> [OPTION]
+ | mic [GLOBAL-OPTS] create(cr) SUBCOMMAND <ksfile> [OPTION]
 
 Subcommands:
 
- | help(?)      give detailed help on a specific sub-command
+ | auto         auto detect image type from magic header
  | fs           create fs image, which is also chroot directory
- | livecd       create live CD image, used for CD booting
- | liveusb      create live USB image, used for USB booting
  | loop         create loop image, including multi-partitions
- | raw          create raw image, containing multi-partitions
+ | qcow         create qcow image
 
 Options:
 
@@ -50,23 +45,23 @@ Options:
   --pack-to=PACK_TO   pack the images together into the specified achive, extension supported: .zip, .tar, .tar.gz, .tar.bz2, etc. by default, .tar will be used
   --release=RID  generate a release of RID with all necessary files, when @BUILD_ID@ is contained in kickstart file, it will be replaced by RID. sample values: "latest", "tizen_20120101.1"
   --copy-kernel  copy kernel files from image /boot directory to the image output directory
+  --runtime=RUNTIME  Specify  runtime mode, avaiable: bootstrap
+  --install-pkgs=INSTALL_PKGS  Specify what type of packages to be installed, valid: source, debuginfo, debugsource
+  --check-pkgs=CHECK_PKGS  Check if given packages would be installed, packages should be separated by comma
+  --tmpfs  Setup tmpdir as tmpfs to accelerate, experimental feature, use it if you have more than 4G memory
+  --strict-mode  Abort creation of image, if there are some errors during rpm installation
 
 Options for fs image:
   --include-src  generate a image with source rpms included; to enable it, user should specify the source repo in the ks file
 
 Options for loop image:
   --shrink       whether to shrink loop images to minimal size
-  --compress-image=COMPRESS_IMAGE  compress all loop images with 'gz' or 'bz2'
-  --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
-
-Options for raw image:
-  --compress-image=COMPRESS_IMAGE  compress all raw images with 'gz' or 'bz2'
+  --compress-image=COMPRESS_IMAGE  compress all loop images with 'gz' or 'bz2' or 'lzo'
   --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
 
 Examples:
 
  | mic create loop tizen.ks
- | mic create livecd tizen.ks --release=latest
  | mic cr fs tizen.ks --local-pkgs-path=localrpm
 
 chroot
@@ -85,34 +80,13 @@ Options:
 Examples:
 
  | mic chroot loop.img
- | mic chroot tizen.iso
- | mic ch -s tizenfs tizen.usbimg
-
-convert
--------
-This command is used for converting an image to another format.
-
-Usage:
-
- | mic convert(cv) <imagefile> <destformat>
-
-Options:
-
-   -h, --help  show the help message
-   -S, --shell  launch interactive shell before packing the new image in the converting
-
-Examples:
-
- | mic convert tizen.iso liveusb
- | mic convert tizen.usbimg livecd
- | mic cv --shell tizen.iso liveusb
 
 Advanced Usage
 ==============
 The advanced usage is just for bootstrap, please skip it if you don't care about it.
 
 The major purpose to use bootstrap is that some important packages (like rpm) are customized
-a lot in the repo which you want to create image, and mic must use the customized rpm to 
+a lot in the repo which you want to create image, and mic must use the customized rpm to
 create images, or the images can't be boot. So mic will create a bootstrap using the repo
 in the ks file at first, then create the image via chrooting, which can make mic using the
 chroot environment with the customized rpm.
@@ -147,13 +121,17 @@ tools repos, until the official released one being fixed.
 
 Failed to create btrfs image in openSUSE
 ----------------------------------------
-When creating btrfs image in openSUSE, it would hang up with showing image kernel 
-panic. This issue impact all openSUSE distributions: 12.1, 11.4, 11.3, etc 
+When creating btrfs image in openSUSE, it would hang up with showing image kernel
+panic. This issue impact all openSUSE distributions: 12.1, 11.4, 11.3, etc
 
 REPORTING BUGS
 ==============
 The source code is tracked in github.com:
 
-    https://github.com/jfding/mic
+    https://github.com/01org/mic
+
+The bug is registered in tizen.org:
+
+    https://bugs.tizen.org/jira
 
 Please report issues for bugs or feature requests.

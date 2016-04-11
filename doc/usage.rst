@@ -8,7 +8,6 @@ Overview
 MIC offers three major functions:
 
 - creating an image with different format
-- converting an image to another format
 - chrooting into an image
 
 Getting help
@@ -25,9 +24,7 @@ How to get help:
 
   * mic --help
   * mic create --help
-  * mic help create
   * mic create loop --help
-  * mic create help loop
 
 Image formulation support
 -------------------------
@@ -38,20 +35,12 @@ Image formulation support
   * For a configuration with multiple partitions, which is specified in the kickstartfile, mic will generate multiple loop images
   * And multiple loop images can be packed into a single archive file
 
-- Raw
-
-  * “raw” format means something like hard disk dumping
-  * Including partition table and all the partitions
-  * The image is bootable directly
-
-- Livecd/liveusb
-
-  * Mainly used for an ia32 build, it can be burned to CD or usbstick, which can be booted into a live system or installation UI
-
 - fs
 
   * “fs” means file-system
   * mic can install all the Tizen files to the specified directory, which can be used directly as chroot env
+
+- qcow
 
 
 Create
@@ -60,25 +49,23 @@ Create
 
 ::
 
-  mic create(cr) SUBCOMMAND <ksfile> [OPTION]
+  mic [GLOBAL-OPTS] create(cr) SUBCOMMAND <ksfile> [OPTION]
 
 
 - Sub-commands, to specify image format, include:
 
 ::
 
-  help(?)            give detailed help on a specific sub-command
+  auto               auto detect image type from magic header
   fs                 create fs image, which is also a chroot directory
-  livecd             create live CD image, used for CD booting
-  liveusb            create live USB image, used for USB booting
   loop               create loop image, including multi-partitions
-  raw                create raw image, containing multi-partitions
+  qcow               create qcow image
 
 - <ksfile>:
 
 The kickstart file is a simple text file, containing a list of items about image partition, setup, Bootloader, packages to be installed, etc, each identified by a keyword.
 
-In Tizen, the released image will have a ks file along with image. For example, you can download the ks file from: http://download.tizen.org/releases/daily/trunk/ivi/latest/images/ivi-min...
+In Tizen, the released image will have a ks file along with image. For example, you can download the ks file from: http://download.tizen.org/releases/weekly/tizen/mobile/latest/images/...
 
 - Options include:
 
@@ -107,28 +94,35 @@ In Tizen, the released image will have a ks file along with image. For example, 
    --pack-to=PACK_TO   Pack the images together into the specified achive,
                        extension supported: .zip, .tar, .tar.gz, .tar.bz2,
                        etc. by default, .tar will be used
-   --copy-kernel       Copy kernel files from image /boot directory to the
-                       image output directory.
-
-- Other options:
-
-:: 
-
    --runtime=RUNTIME_MODE
                        Sets runtime mode, the default is bootstrap mode, valid
-                       values: "native", "bootstrap". "native" means mic uses
-                       localhost environment to create image, while "bootstrap"
-                       means mic uses one tizen chroot environment to create image.
-    --compress-image=COMPRESS_IMAGE (for loop & raw)
+                       values: "bootstrap". "bootstrap"  means mic uses one
+                       tizen chroot environment to create image.
+   --copy-kernel       Copy kernel files from image /boot directory to the
+                       image output directory.
+   --install-pkgs      INSTALL_PKGS  Specify what type of packages to be 
+                       installed, valid: source, debuginfo, debugsource
+   --check-pkgs=CHECK_PKGS  
+                       Check if given packages would be installed,
+                       packages should be separated by comma
+   --tmpfs             Setup tmpdir as tmpfs to accelerate, experimental feature,
+                       use it if you have more than 4G memory
+   --strict-mode       Abort creation of image, if there are some errors 
+                       during rpm installation
+  
+- Other options:
+
+::
+
+   --compress-image=COMPRESS_IMAGE (for loop)
                        Sets the disk image compression. Note: The available
                        values might depend on the used filesystem type.
    --compress-disk-image=COMPRESS_IMAGE
                        Same with --compress-image
    --shrink (for loop)
                        Whether to shrink loop images to minimal size
-   --generate-bmap (for raw)
-                       Generate the block map file
-
+   --include-src (for fs)
+                       Generate a image with source rpms included
 - Examples:
 
 ::
@@ -158,34 +152,6 @@ This command is used to chroot inside the image. It's a great enhancement of the
 ::
 
    mic ch loop.img
-   mic ch tizen.iso
-   mic ch -s tizenfs tizen.usbimg
-
-Convert 
--------
-This command is used for converting an image to another format.
-
-
-- Usage:
-
-::
-
-   mic convert(cv) <imagefile> <destformat>
-
-- Options:
-
-::
-
-   -h, --help   Show this help message and exit
-   -S, --shell  Launch shell before packaging the converted image
-
-- Examples:
-
-::
-
-   mic cv tizen.iso liveusb
-   mic cv tizen.usbimg livecd
-   mic cv --shell tizen.iso liveusb
 
 Getting Start
 -------------

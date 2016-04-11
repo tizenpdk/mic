@@ -1,21 +1,37 @@
-* Thu Jan 22 2015 Lihong Sun <lihongx.sun@intel.com> - 0.24.4
+* Mon Mar 28 2016 Jianzhong Fang <jz.fang@samsung.com> - 0.27
+  * new distribution support: CentOS 7, Debian 8, Fedora 21, 
+    Fedora 22, Fedora 23,  openSUSE 13.2
   * generate manifest file to describe image information
-  * update mount option to make it more general
-  * bug fix:
-     - fix incorrect logfile location of '--release' if creation failed
-     - update dependency package for mic
-     - add catching 'distribution not found' exception
+  * refactor archive and compress module
+  * support sparse handle for tar command
+  * replace system V with systemd on locale setting
+  * add qcow2 image format support
+  * add strict mode for package installing
+  * enable ssl_verify option in config file
+  * enhance checksums of outputs: md5sum, sha1sum, sha256sum
+  * drop mic-native support
+  * update mount option
+  * revert bind mount config file to instroot
+  * drop liveusb, livecd and raw image formats support
+  * use argparse module to parse the cmd line
 
-* Mon Nov 24 2014 Yongfeng Du <dolpher.du@intel.com> - 0.24.3
   * bug fix:
+    - fix logfile incomplete in release option
+    - fix config file disappear in bootstrap
+    - fix aarch64 bin_format
+    - fix pylint
+    - fix real path of device mapper causing initrd failure
     - fix qemu arm and arm64 issues
-    - remove --preserve-order option in taring fs image
-
-* Wed Jul 09 2014 Gui Chen <gui.chen@intel.com> - 0.24.2
-  * enable ssl_verify in config file
-  * fix logfile incompleted issue
-  * fix md5sum to be compatible with utility md5sum
-  * fix locale issue in systemd service
+    - fix AttributeError in zypp backend
+    - fix 'python-xml' depends used by cElements
+    - fix xml requirements
+    - fix logfile not in release of '--release' when creation failed
+    - fix copyright missing issue
+    - fix syslinux installation path issue in Arch Linux
+    - fix priority option of ks file not apply
+    - fix need to check loop device after excute 'losetup --find'
+    - fix check scriptlet error file on /tmp/.postscript/error/
+    - fix broken tar archive
 
 * Tue Mar 11 2014 Gui Chen <gui.chen@intel.com> - 0.24
   * enhance to handle password with special characters

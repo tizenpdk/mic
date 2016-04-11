@@ -1,251 +1,273 @@
 #!/usr/bin/env python
+
+#Copyright (c) 2011 Intel, Inc.
 #
-# Copyright (c) 2011 Intel, Inc.
+#This program is free software; you can redistribute it and/or modify it
+#under the terms of the GNU General Public License as published by the Free
+#Software Foundation; version 2 of the License
 #
-# This program is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by the Free
-# Software Foundation; version 2 of the License
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+#This program is distributed in the hope that it will be useful, but
+#WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
 # or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 # for more details.
 #
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc., 59
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+# pylint: disable-msg=E0611, E1101, R0201
+# E0611: no name in module, some attributes are set during running, so ignore it
+# E1101: %s %r has no %r member, some attributes are set during running,
+#        so ignore it
+# R0201: Method could be a function
 
-import os, sys, errno
-from mic import msger, creator, __version__ as VERSION
-from mic.utils import cmdln, misc, errors
+"""
+ This mudule is entry for mic.
+ It defines a class named MicCmd inheriting Cmdln, and supplies interfaces like
+ 'create, chroot, convert' and also some parameters for command 'mic'.
+"""
+import os
+import sys
+import errno
+
+from argparse import ArgumentParser, SUPPRESS
+
+from mic import msger, __version__ as VERSION
+from mic.utils import misc, errors
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
+from mic.helpformat import MICHelpFormatter, subparser
+    
 
+@subparser
+def chroot_parser(parser):
+    """chroot into an image
 
-def optparser_setup(func):
-    """Setup optparser for a function"""
-    if not hasattr(func, "optparser"):
-        func.optparser = cmdln.SubCmdOptionParser()
-        func.optparser.disable_interspersed_args()
-    return func
-
-
-class MicCmd(cmdln.Cmdln):
+    Examples:
+        mic chroot platform.img
+        mic chroot platform.img ls
     """
-    Usage: mic SUBCOMMAND [OPTS] [ARGS...]
-
-    mic Means the Image Creation tool
-    Try 'mic help SUBCOMMAND' for help on a specific subcommand.
-
-    ${command_list}
-    global ${option_list}
-    ${help_list}
+    parser.add_argument('imagefile', help='Path of image file')
+    parser.add_argument('-s', '--saveto', action = 'store', dest = 'saveto', default = None,
+                        help = "Save the unpacked image to specified dir")
+    parser.add_argument('-c', '--cmd', dest = 'cmd', default = None,
+                        help = "command which will be executed in chroot environment")
+    parser.set_defaults(alias="ch")
+    return parser
+    
+@subparser
+def create_parser(parser):
+    """create an image
+    Examples:
+      $ mic -d -v create auto handset_blackbay.ks
+      $ mic -d -v cr loop handset_blackbay.ks --logfile=mic.log
     """
 
-    name = 'mic'
-    version = VERSION
+    parent_parser = ArgumentParser(add_help=False)
+    parent_parser.add_argument('ksfile', help='Path of ksfile');
+    parent_parser.add_argument('--logfile', dest='logfile', default=None,
+                               help='Path of logfile')
+    parent_parser.add_argument('-c', '--config', dest='config', default=None,
+                               help='Specify config file for mic')                
+    parent_parser.add_argument('-k', '--cachedir', action='store',
+                               dest='cachedir', default=None,
+                               help='Cache directory to store the downloaded')
+    parent_parser.add_argument('-o', '--outdir', action='store', dest='outdir', 
+                               default=None, help='Output directory')
+    parent_parser.add_argument('-A', '--arch', dest='arch', default=None,
+                               help='Specify repo architecture')
+    parent_parser.add_argument('--release', dest='release', default=None, metavar='RID',
+                               help='Generate a release of RID with all necessary'
+                               ' files, when @BUILD_ID@ is contained in '
+                               'kickstart file, it will be replaced by RID')
+    parent_parser.add_argument("--record-pkgs", dest="record_pkgs", default=None,
+                               help='Record the info of installed packages, '
+                               'multiple values can be specified which '
+                               'joined by ",", valid values: "name", '
+                               '"content", "license", "vcs"')
+    parent_parser.add_argument('--pkgmgr', dest='pkgmgr', default=None,
+                               help='Specify backend package manager')
+    parent_parser.add_argument('--local-pkgs-path', dest='local_pkgs_path', default=None,
+                               help='Path for local pkgs(rpms) to be installed')
+    parent_parser.add_argument('--runtime', dest='runtime', default=None,
+                               help='Specify runtime mode, avaiable: bootstrap')
+    # --taring-to is alias to --pack-to
+    parent_parser.add_argument('--taring-to', dest='pack_to', default=None,
+                               help=SUPPRESS)
+    parent_parser.add_argument('--pack-to', dest='pack_to', default=None,
+                               help='Pack the images together into the specified'
+                                    ' achive, extension supported: .zip, .tar, '
+                                    '.tar.gz, .tar.bz2, etc. by default, .tar '
+                                    'will be used')
+    parent_parser.add_argument('--copy-kernel', action='store_true', dest='copy_kernel',
+                               help='Copy kernel files from image /boot directory'
+                                    ' to the image output directory.')
+    parent_parser.add_argument('--install-pkgs', action='store', dest='install_pkgs', default=None,
+                               help='Specify what type of packages to be installed,'
+                                    ' valid: source, debuginfo, debugsource')
+    parent_parser.add_argument('--check-pkgs', action='store', dest='check_pkgs', default=[],
+                               help='Check if given packages would be installed, '
+                                    'packages should be separated by comma')
+    parent_parser.add_argument('--tmpfs', action='store_true', dest='enabletmpfs',
+                               help='Setup tmpdir as tmpfs to accelerate, experimental'
+                                    ' feature, use it if you have more than 4G memory')
+    parent_parser.add_argument('--repourl', action='append', dest='repourl', default=[],
+                               help=SUPPRESS)
+    parent_parser.add_argument('-R', '--repo', action='append',
+                               dest='repo', default=[],
+                               help=SUPPRESS)
+    parent_parser.add_argument('--ignore-ksrepo', action='store_true',
+                               dest='ignore_ksrepo', default=False,
+                               help=SUPPRESS)
+    parent_parser.add_argument('--strict-mode', action='store_true',
+                               dest='strict_mode', default=False,
+                               help='Abort creation of image, if there are some errors'
+                                    ' during rpm installation. ')
+    parser.set_defaults(alias="cr")
 
-    def print_version(self):
-        msger.raw("%s %s (%s)" % (self.name,
-                                  self.version,
+    subparsers  = parser.add_subparsers(title='Subcommands', dest='subcommand')
+    auto_parser = subparsers.add_parser('auto', parents=[parent_parser], help='auto detect image type from magic header')
+    
+    fs_parser   = subparsers.add_parser('fs', parents=[parent_parser], 
+                                        help='create fs image')
+    fs_parser.add_argument("--include-src", dest = "include_src",action = "store_true",
+                           default = False, help = "Generate a image with source rpms included")
+                  
+    loop_parser = subparsers.add_parser('loop', parents=[parent_parser], help='create loop image')
+
+    loop_parser.add_argument("--compress-disk-image", dest="compress_image",
+                             choices=("gz", "bz2"), default=None,
+                             help="Same with --compress-image")
+    # alias to compress-image for compatibility
+    loop_parser.add_argument("--compress-image", dest="compress_image",
+                             choices=("gz", "bz2"), default=None,
+                             help="Compress all loop images with 'gz' or 'bz2'")
+    loop_parser.add_argument("--shrink", action='store_true', default=False,
+                  help="Whether to shrink loop images to minimal size")
+                  
+    qcow_parser = subparsers.add_parser('qcow', parents=[parent_parser], help='create qcow image')
+
+    return parser
+
+def main(argv):
+    """Script entry point."""
+    
+    def print_version():
+        """log name, verion, hostname"""
+        
+        name = 'mic'
+        msger.raw("%s %s (%s)" % (name,
+                                  VERSION,
                                   misc.get_hostname_distro_str()))
-
-    def get_optparser(self):
-        optparser = cmdln.CmdlnOptionParser(self, version=self.version)
-        # hook optparse print_version here
-        optparser.print_version = self.print_version
-        optparser.add_option('-d', '--debug', action='store_true',
-                             dest='debug',
-                             help='print debug message')
-        optparser.add_option('-v', '--verbose', action='store_true',
-                             dest='verbose',
-                             help='verbose information')
-        optparser.add_option('-i', '--interactive', action='store_true',
-                             dest='interactive', default='True',
-                             help='interactive output')
-        optparser.add_option('--non-interactive', action='store_false',
-                             dest='interactive', default='True',
-                             help='non-interactive output')
-        return optparser
-
-    def postoptparse(self):
-        if self.options.interactive:
-            msger.enable_interactive()
-        else:
-            msger.disable_interactive()
-
-        if self.options.verbose:
-            msger.set_loglevel('VERBOSE')
-
-        if self.options.debug:
-            try:
-                import rpm
-                rpm.setVerbosity(rpm.RPMLOG_NOTICE)
-            except ImportError:
-                pass
-
-            msger.set_loglevel('DEBUG')
-
-        self.print_version()
-
-    def help_create(self):
-        crobj = creator.Creator()
-        crobj.optparser = crobj.get_optparser()
-        doc = crobj.__doc__
-        doc = crobj._help_reindent(doc)
-        doc = crobj._help_preprocess(doc, None)
-        doc = doc.replace(crobj.name, "${cmd_name}", 1)
-        doc = doc.rstrip() + '\n'
-        return doc
-
-    @cmdln.alias("cr")
-    def do_create(self, argv):
-        crobj = creator.Creator()
-        crobj.main(argv[1:])
-
-    def _root_confirm(self):
-        if os.geteuid() != 0:
-            msger.error('Root permission is required to continue, abort')
-
-    @cmdln.alias("cv")
-    @cmdln.option("-S", "--shell",
-                  action="store_true", dest="shell", default=False,
-                  help="Launch shell before packaging the converted image")
-    def do_convert(self, subcmd, opts, *args):
-        """${cmd_name}: convert image format
-
-        Usage:
-            mic convert <imagefile> <destformat>
-
-        ${cmd_option_list}
+                                  
+    def has_parameter(arg, arglist):
         """
-
-        if not args:
-            # print help
-            handler = self._get_cmd_handler('convert')
-            if hasattr(handler, "optparser"):
-                handler.optparser.print_help()
-            return 1
-
-        if len(args) == 1:
-            raise errors.Usage("It need 2 arguments (1 given)")
-        elif len(args) == 2:
-            (srcimg, destformat) = args
-        else:
-            raise errors.Usage("Extra argument given")
-
-        if not os.path.exists(srcimg):
-            raise errors.CreatorError("Cannot find the image: %s" % srcimg)
-
-        self._root_confirm()
-
-        configmgr.convert['shell'] = opts.shell
-
-        srcformat = misc.get_image_type(srcimg)
-        if srcformat == "ext3fsimg":
-            srcformat = "loop"
-
-        srcimager = None
-        destimager = None
-        for iname, icls in pluginmgr.get_plugins('imager').iteritems():
-            if iname == srcformat and hasattr(icls, "do_unpack"):
-                srcimager = icls
-            if iname == destformat and hasattr(icls, "do_pack"):
-                destimager = icls
-
-        if (srcimager and destimager) is None:
-            raise errors.CreatorError("Can't convert from %s to %s" \
-                                      % (srcformat, destformat))
-
-        else:
-            maptab = {
-                        "livecd": "iso",
-                        "liveusb": "usbimg",
-                        "loop": "img",
-                     }
-
-            if destformat in maptab:
-                imgname = os.path.splitext(os.path.basename(srcimg))[0]
-                dstname = "{0}.{1}".format(imgname, maptab[destformat])
-
-                if os.path.exists(dstname):
-                    if msger.ask("Converted image %s seems existed, "
-                                 "remove and continue?" % dstname):
-                        os.unlink(dstname)
-                    else:
-                        raise errors.Abort("Canceled")
-
-            base_on = srcimager.do_unpack(srcimg)
-            destimager.do_pack(base_on)
-
-    @cmdln.alias("ch")
-    @cmdln.option('-s', '--saveto',
-                  action='store', dest='saveto', default=None,
-                  help="Save the unpacked image to specified dir")
-    @optparser_setup
-    def do_chroot(self, subcmd, opts, *args):
-        """${cmd_name}: chroot into an image
-
-        Usage:
-            mic chroot [options] <imagefile> [command [arg]...]
-
-        ${cmd_option_list}
+        Helper function.
+        Check if argument requires parameter by analyzing
+        its action. Parameter is required only for 'store' and 'append' actions
         """
+        if arg.startswith('-'):
+            for args in arglist:
+                if arg in (args['short'], args['long']):
+                    if args.get('action') in (None, 'store', 'append'):
+                        return True
+                    return False
 
-        if not args:
-            # print help
-            handler = self._get_cmd_handler('chroot')
-            if hasattr(handler, "optparser"):
-                handler.optparser.print_help()
-            return 1
+    # Create top level parser
+    epilog = "Try 'mic SUBCOMMAND --help' for help on a specific subcommand."
+    description = "mic - the Image Creation tool"
+    parser = ArgumentParser(description=description, epilog=epilog,
+                            formatter_class=MICHelpFormatter)
 
-        targetimage = args[0]
+    # List of global arguments
+    # The main purpose of this structure is to contain arguments
+    # of add_argument. This is used to do aliasing properly
+    # (see code under the comment 'replace aliases with real commands')
+    global_args = [{'short': '-V', 'long': '--version', 'action': 'version',
+                    'version': '%(prog)s ' + VERSION},
+                   {'short': '-d', 'long': '--debug', 'action': 'store_true',
+                    'help': 'debug output'},
+                   {'short': '-v', 'long': '--verbose', 'action': 'store_true',
+                    'help': 'verbose output'},
+                   {'short': '-i', 'long': '--interactive', 'action': 'store_true',
+                    'dest': 'interactive', 'default': 'True', 'help': 'interactive output'}, 
+                   {'short': '', 'long': '--non-interactive', 'action': 'store_false',
+                    'dest': 'interactive', 'default': 'True', 'help': 'non-interactive output'}, 
+                  ]
 
-        if not os.path.exists(targetimage):
-            raise errors.CreatorError("Cannot find the image: %s"
-                                      % targetimage)
+    for args in global_args:
+        parser_kwargs = {}
+        for key in ('action', 'help', 'version', 'default', 'dest'):
+            if key in args:
+                parser_kwargs[key] = args[key]
+        
+        if args['short'] is '':
+            parser.add_argument(args['long'], **parser_kwargs)
+        else:
+            parser.add_argument(args['short'], args['long'], **parser_kwargs)
 
-        self._root_confirm()
+    # hacked by the request of cmdln lovers
+    parser.format_usage = parser.format_help
 
-        configmgr.chroot['saveto'] = opts.saveto
+    # Create parsers for subcommands
+    subparsers = parser.add_subparsers(title='subcommands')
 
-        imagetype = misc.get_image_type(targetimage)
-        if imagetype in ("ext3fsimg", "ext4fsimg", "btrfsimg"):
-            imagetype = "loop"
+    # collect aliases
+    aliases = {}
+    for name, obj in globals().iteritems():
+        if name.endswith('_parser') and callable(obj):
+            aliases[obj(subparsers).get_default('alias')] = name.split('_')[0]
 
-        chrootclass = None
-        for pname, pcls in pluginmgr.get_plugins('imager').iteritems():
-            if pname == imagetype and hasattr(pcls, "do_chroot"):
-                chrootclass = pcls
+    # replace aliases with real commands
+    for i, arg in enumerate(argv[1:]):
+        if not arg.startswith('-'):
+            # argv[i] is previous argument to arg
+            if not has_parameter(argv[i], global_args) and arg in aliases:
+                argv[i+1] = aliases[arg]
                 break
 
-        if not chrootclass:
-            raise errors.CreatorError("Cannot support image type: %s" \
-                                      % imagetype)
+    # Parse arguments
+    args = parser.parse_args(argv[1:])
 
-        chrootclass.do_chroot(targetimage, args[1:])
+    if args.interactive:
+        msger.enable_interactive()
+    else:
+        msger.disable_interactive()
 
+    if args.verbose:
+        msger.set_loglevel('VERBOSE')
+
+    if args.debug:
+        try:
+            import rpm
+            rpm.setVerbosity(rpm.RPMLOG_NOTICE)
+        except ImportError:
+            pass
+
+        msger.set_loglevel('DEBUG')
+
+    print_version()
+
+    # Import target module and call 'main' from it
+    module = __import__("mic.%s" % args.module, fromlist=[args.module])
+    return module.main(parser, args, argv[1:])
+
+    
 if __name__ == "__main__":
     try:
-        MIC = MicCmd()
-        sys.exit(MIC.main())
-
+        sys.exit(main(sys.argv))
     except KeyboardInterrupt:
         msger.error('\n^C catched, program aborted.')
-
-    # catch 'no space left' exception, etc
-    except IOError, ioerr:
+    except IOError as ioerr:
+        # catch 'no space left' exception, etc
         if ioerr.errno == errno.ENOSPC:
             msger.error('\nNo space left on device')
         raise
-
-    except errors.Usage, usage:
+    except errors.Usage as usage:
         msger.error(str(usage))
-
-    except errors.Abort, msg:
+    except errors.Abort as  msg:
         msger.info(str(msg))
-
-    except errors.CreatorError, err:
+    except errors.CreatorError as err:
         if msger.get_loglevel() == 'DEBUG':
             import traceback
             msger.error(traceback.format_exc())
