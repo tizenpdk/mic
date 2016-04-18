@@ -1,6 +1,6 @@
 mic (0.27) unstable; urgency=low
   * new distribution support: CentOS 7, Debian 8, Fedora 21, 
-    Fedora 22, Fedora 23,  openSUSE 13.2
+    Fedora 22, openSUSE 13.2
   * generate manifest file to describe image information
   * refactor archive and compress module
   * support sparse handle for tar command

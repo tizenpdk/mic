@@ -5,10 +5,10 @@ Released Mar 28 2016
 This release note documents the changes included in the new release. And
 the release contains new features, enhancements and bug fixes.
 
-New Features & Ehancements
+New Features & Enhancements
 --------------------------
   * new distribution support: CentOS 7, Debian 8, Fedora 21, 
-    Fedora 22, Fedora 23,  openSUSE 13.2
+    Fedora 22, openSUSE 13.2
   * generate manifest file to describe image information
   * refactor archive and compress module
   * support sparse handle for tar command
