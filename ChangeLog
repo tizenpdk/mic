@@ -9,12 +9,13 @@ Release 0.27 - Mon Mar 28 2016 - Jianzhong Fang <jz.fang@samsung.com>
   * add qcow2 image format support
   * add strict mode for package installing
   * enable ssl_verify option in config file
-  * enhance checksums of outputs: md5sum, sha1sum, sha256sum
-  * drop mic-native support
+  * enhance checksums of outputs: md5sum, sha1sum, sha256sum (#DEVT-224)
+  * drop mic-native support (#DEVT-248)
   * update mount option
   * revert bind mount config file to instroot
-  * drop liveusb, livecd and raw image formats support
-  * use argparse module to parse the cmd line
+  * drop liveusb, livecd and raw image formats support (#DEVT-243, #DEVT-263)
+  * use argparse module to parse the cmd line (#DEVT-52)
+
 
   * bug fix:
     - fix logfile incomplete in release option
@@ -29,7 +30,7 @@ Release 0.27 - Mon Mar 28 2016 - Jianzhong Fang <jz.fang@samsung.com>
     - fix logfile not in release of '--release' when creation failed
     - fix copyright missing issue
     - fix syslinux installation path issue in Arch Linux
-    - fix priority option of ks file not apply
+    - fix priority option of ks file not apply (#DEVT-254)
     - fix need to check loop device after excute 'losetup --find'
     - fix check scriptlet error file on /tmp/.postscript/error/
     - fix broken tar archive
