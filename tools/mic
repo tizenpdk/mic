@@ -147,6 +147,19 @@ def create_parser(parser):
                   
     qcow_parser = subparsers.add_parser('qcow', parents=[parent_parser], help='create qcow image')
 
+    raw_parser = subparsers.add_parser('raw', parents=[parent_parser], help='create raw image')
+
+    raw_parser.add_argument("--compress-disk-image", dest="compress_image",
+                            choices=("gz", "bz2"), default=None,
+                            help="Same with --compress-image")
+    raw_parser.add_argument("--compress-image", dest="compress_image",
+                            choices=("gz", "bz2"), default = None,
+                            help="Compress all raw images before package")
+    raw_parser.add_argument("--generate-bmap", action="store_true", default = None,
+                            help="also generate the block map file")
+    raw_parser.add_argument("--fstab-entry", dest="fstab_entry", choices=("name", "uuid"), default="uuid",
+                            help="Set fstab entry, 'name' means using device names, "
+                                 "'uuid' means using filesystem uuid")
     return parser
 
 def main(argv):
