@@ -35,6 +35,12 @@ Image formulation support
   * For a configuration with multiple partitions, which is specified in the kickstartfile, mic will generate multiple loop images
   * And multiple loop images can be packed into a single archive file
 
+- Raw
+
+  * “raw” format means something like hard disk dumping
+  * Including partition table and all the partitions
+  * The image is bootable directly
+
 - fs
 
   * “fs” means file-system
@@ -59,6 +65,7 @@ Create
   auto               auto detect image type from magic header
   fs                 create fs image, which is also a chroot directory
   loop               create loop image, including multi-partitions
+  raw                create raw image, containing multi-partitions
   qcow               create qcow image
 
 - <ksfile>:
@@ -114,7 +121,7 @@ In Tizen, the released image will have a ks file along with image. For example, 
 
 ::
 
-   --compress-image=COMPRESS_IMAGE (for loop)
+   --compress-image=COMPRESS_IMAGE (for loop & raw)
                        Sets the disk image compression. Note: The available
                        values might depend on the used filesystem type.
    --compress-disk-image=COMPRESS_IMAGE
@@ -123,6 +130,12 @@ In Tizen, the released image will have a ks file along with image. For example, 
                        Whether to shrink loop images to minimal size
    --include-src (for fs)
                        Generate a image with source rpms included
+   --generate-bmap (for raw)
+                       Generate the block map file
+   --fstab-entry (for raw)
+                       Set fstab entry, 'name' means using device names,
+                       'uuid' means using filesystem uuid
+
 - Examples:
 
 ::
