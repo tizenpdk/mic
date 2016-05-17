@@ -578,7 +578,6 @@ class RawImageCreator(BaseImageCreator):
         if self.bmap_needed is None:
             return
 
-        from mic.utils import BmapCreate
         msger.info("Generating the map file(s)")
 
         for name in self.__disks.keys():
@@ -588,13 +587,11 @@ class RawImageCreator(BaseImageCreator):
                                             os.path.basename(bmap_file)})
 
             msger.debug("Generating block map file '%s'" % bmap_file)
-
-            try:
-                creator = BmapCreate.BmapCreate(image, bmap_file)
-                creator.generate()
-                del creator
-            except BmapCreate.Error as err:
-                raise CreatorError("Failed to create bmap file: %s" % str(err))
+            
+            bmaptoolcmd = misc.find_binary_path('bmaptool')
+            rc = runner.show([bmaptoolcmd, 'create', image, '-o', bmap_file])
+            if rc != 0:
+                raise CreatorError("Failed to create bmap file: %s" % bmap_file)
 
     def create_manifest(self):
         if self.compress_image:
