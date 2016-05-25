@@ -1,3 +1,11 @@
+mic (0.27.1) unstable; urgency=low
+  * new distribution support: Ubuntu 16.04
+  * add raw image format support
+  * bug fix:
+    - fix remove BmapCreate and Filemap source code (#DEVT-151)
+
+ -- Jianzhong Fang <jz.fang@samsung.com>  Wed, 25 May 2016 15:00:00 +0800
+
 mic (0.27) unstable; urgency=low
   * new distribution support: CentOS 7, Debian 8, Fedora 21, 
     Fedora 22, openSUSE 13.2
