@@ -1,4 +1,6 @@
 mic (0.27) unstable; urgency=low
+ * new distribution support: CentOS 7, Debian 8, Fedora 21, 
+    Fedora 22, openSUSE 13.2
   * new distribution support: Ubuntu 14.04 and Debian 7.0
   * generate manifest file to describe image information
   * refactor archive and compress module
@@ -9,11 +11,13 @@ mic (0.27) unstable; urgency=low
   * add qcow2 image format support
   * add strict mode for package installing
   * enable ssl_verify option in config file
-  * enhance checksums of outputs: md5sum, sha1sum, sha256sum
+  * enhance checksums of outputs: md5sum, sha1sum, sha256sum  (#DEVT-224)
   * enhance VCS info in yum backend
-  * drop mic-native support
+  * drop mic-native support (#DEVT-248)
   * update mount option
   * revert bind mount config file to instroot
+  * drop liveusb, livecd and raw image formats support (#DEVT-243, #DEVT-263)
+  * use argparse module to parse the cmd line (#DEVT-52)
   * bug fix:
     - fix logfile incomplete in release option
     - fix config file disappear in bootstrap
@@ -27,8 +31,12 @@ mic (0.27) unstable; urgency=low
     - fix logfile not in release of '--release' when creation failed
     - fix copyright missing issue
     - fix syslinux installation path issue in Arch Linux
+    - fix priority option of ks file not apply (#DEVT-254)
+    - fix need to check loop device after excute 'losetup --find'
+    - fix check scriptlet error file on /tmp/.postscript/error/
+    - fix broken tar archive
 
- -- Lihong Sun <lihongx.sun@intel.com>  Wed, 29 Apr 2015 17:25:35 +0800
+ -- Jianzhong Fang <jz.fang@samsung.com>  Mon, 28 Mar 2016 19:50:35 +0800
 
 mic (0.24) unstable; urgency=low
    * enhance to handle password with special characters
