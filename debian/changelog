@@ -1,5 +1,5 @@
 mic (0.27.1) unstable; urgency=low
-  * new distribution support: Ubuntu 16.04
+  * new distribution support: Ubuntu 16.04, Fedora 23
   * add raw image format support
   * bug fix:
     - fix remove BmapCreate and Filemap source code (#DEVT-151)

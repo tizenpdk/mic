@@ -7,7 +7,7 @@ the release contains new features, enhancements and bug fixes.
 
 New Features & Enhancements
 --------------------------
-  * new distribution support: Ubuntu 16.04
+  * new distribution support: Ubuntu 16.04, Fedora 23
   * add raw image format support
 
 Bug Fixes
