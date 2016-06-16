@@ -1,9 +1,9 @@
 Release 0.27.1 - Wed May 25 2016 - Jianzhong Fang <jz.fang@samsung.com>
 =====================================================================
-  * new distribution support: Ubuntu 16.04
+  * new distribution support: Ubuntu 16.04, Fedora 23
   * add raw image format support
   * bug fix:
-    - fix remove BmapCreate and Filemap source code (#DEVT-151)
+    - Remove BmapCreate and Filemap source code from MIC (#DEVT-151)
 
 Release 0.27 - Mon Mar 28 2016 - Jianzhong Fang <jz.fang@samsung.com>
 =====================================================================

@@ -7,12 +7,12 @@ the release contains new features, enhancements and bug fixes.
 
 New Features & Enhancements
 --------------------------
-  * new distribution support: Ubuntu 16.04
+  * new distribution support: Ubuntu 16.04, Fedora 23
   * add raw image format support
 
 Bug Fixes
 ---------
-  * fix remove BmapCreate and Filemap source code (#DEVT-151)
+  * Remove BmapCreate and Filemap source code from MIC (#DEVT-151)
 
 MIC Image Creator 0.27 Release Notes
 ======================================
