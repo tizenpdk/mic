@@ -29,6 +29,7 @@ Subcommands:
  | auto         auto detect image type from magic header
  | fs           create fs image, which is also chroot directory
  | loop         create loop image, including multi-partitions
+ | raw          create raw image, containing multi-partitions
  | qcow         create qcow image
 
 Options:
@@ -58,6 +59,12 @@ Options for loop image:
   --shrink       whether to shrink loop images to minimal size
   --compress-image=COMPRESS_IMAGE  compress all loop images with 'gz' or 'bz2' or 'lzo'
   --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
+
+Options for raw image:
+  --compress-image=COMPRESS_IMAGE  compress all raw images with 'gz' or 'bz2'
+  --compress-disk-image=COMPRESS_DISK_IMAGE  same with --compress-image
+  --generate-bmap=GENERATE_BMAP also generate the block map file
+  --fstab-entry=FSTAB_ENTRY  Set fstab entry, 'name' means using device names, 'uuid' means using filesystem uuid
 
 Examples:
 
@@ -126,9 +133,9 @@ panic. This issue impact all openSUSE distributions: 12.1, 11.4, 11.3, etc
 
 REPORTING BUGS
 ==============
-The source code is tracked in github.com:
+The source code is tracked in review.tizen.org:
 
-    https://github.com/01org/mic
+    https://review.tizen.org/git/tools/mic
 
 The bug is registered in tizen.org:
 

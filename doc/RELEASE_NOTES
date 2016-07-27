@@ -1,3 +1,19 @@
+MIC Image Creator 0.27.1 Release Notes
+======================================
+Released May 25 2016
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * new distribution support: Ubuntu 16.04, Fedora 23
+  * add raw image format support
+
+Bug Fixes
+---------
+  * Remove BmapCreate and Filemap source code from MIC (#DEVT-151)
+
 MIC Image Creator 0.27 Release Notes
 ======================================
 Released Mar 28 2016
@@ -9,18 +25,14 @@ New Features & Enhancements
 --------------------------
   * new distribution support: CentOS 7, Debian 8, Fedora 21, 
     Fedora 22, openSUSE 13.2
-  * new distribution support: Ubuntu 14.04 and Debian 7.0
   * generate manifest file to describe image information
   * refactor archive and compress module
   * support sparse handle for tar command
   * replace system V with systemd on locale setting
-  * support lzop compress
-  * add new arch MIPS support
   * add qcow2 image format support
   * add strict mode for package installing
   * enable ssl_verify option in config file
   * enhance checksums of outputs: md5sum, sha1sum, sha256sum (#DEVT-224)
-  * enhance VCS info in yum backend
   * drop mic-native support (#DEVT-248)
   * update mount option
   * revert bind mount config file to instroot
@@ -736,7 +748,4 @@ Report Bugs
 -----------
 when you found a bug, you can file this bug in our official bug tracker:
 https://bugs.tizen.org/jira
-also you are welcome to file the issue at our github repository:
-https://github.com/01org/mic
-
 Thank you for using MIC and for taking the time to send us your feedback!

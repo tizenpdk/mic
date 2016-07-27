@@ -1,19 +1,22 @@
+Release 0.27.1 - Wed May 25 2016 - Jianzhong Fang <jz.fang@samsung.com>
+=====================================================================
+  * new distribution support: Ubuntu 16.04, Fedora 23
+  * add raw image format support
+  * bug fix:
+    - Remove BmapCreate and Filemap source code from MIC (#DEVT-151)
+
 Release 0.27 - Mon Mar 28 2016 - Jianzhong Fang <jz.fang@samsung.com>
 =====================================================================
   * new distribution support: CentOS 7, Debian 8, Fedora 21, 
     Fedora 22, openSUSE 13.2
-  * new distribution support: Ubuntu 14.04 and Debian 7.0
   * generate manifest file to describe image information
   * refactor archive and compress module
   * support sparse handle for tar command
   * replace system V with systemd on locale setting
-  * support lzop compress
-  * add new arch MIPS support
   * add qcow2 image format support
   * add strict mode for package installing
   * enable ssl_verify option in config file
   * enhance checksums of outputs: md5sum, sha1sum, sha256sum (#DEVT-224)
-  * enhance VCS info in yum backend
   * drop mic-native support (#DEVT-248)
   * update mount option
   * revert bind mount config file to instroot

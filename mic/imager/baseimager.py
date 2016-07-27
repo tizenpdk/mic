@@ -155,45 +155,25 @@ class BaseImageCreator(object):
             if len(self.ks.handler.partition.partitions) > 1:
                 self.multiple_partitions = True
 
-        if self.target_arch:
-            if self.target_arch.startswith("arm"):
-                for dep in self._dep_checks:
-                    if dep == "extlinux":
-                        self._dep_checks.remove(dep)
+        if self.target_arch and self.target_arch.startswith("arm"):
+            for dep in self._dep_checks:
+                if dep == "extlinux":
+                    self._dep_checks.remove(dep)
 
-                if not os.path.exists("/usr/bin/qemu-arm") or \
-                   not misc.is_statically_linked("/usr/bin/qemu-arm"):
-                    self._dep_checks.append("qemu-arm-static")
+            if not os.path.exists("/usr/bin/qemu-arm") or \
+               not misc.is_statically_linked("/usr/bin/qemu-arm"):
+                self._dep_checks.append("qemu-arm-static")
 
-                if os.path.exists("/proc/sys/vm/vdso_enabled"):
-                    vdso_fh = open("/proc/sys/vm/vdso_enabled","r")
-                    vdso_value = vdso_fh.read().strip()
-                    vdso_fh.close()
-                    if (int)(vdso_value) == 1:
-                        msger.warning("vdso is enabled on your host, which might "
-                            "cause problems with arm emulations.\n"
-                            "\tYou can disable vdso with following command before "
-                            "starting image build:\n"
-                            "\techo 0 | sudo tee /proc/sys/vm/vdso_enabled")
-            elif self.target_arch == "mipsel":
-                for dep in self._dep_checks:
-                    if dep == "extlinux":
-                        self._dep_checks.remove(dep)
-
-                if not os.path.exists("/usr/bin/qemu-mipsel") or \
-                   not misc.is_statically_linked("/usr/bin/qemu-mipsel"):
-                    self._dep_checks.append("qemu-mipsel-static")
-
-                if os.path.exists("/proc/sys/vm/vdso_enabled"):
-                    vdso_fh = open("/proc/sys/vm/vdso_enabled","r")
-                    vdso_value = vdso_fh.read().strip()
-                    vdso_fh.close()
-                    if (int)(vdso_value) == 1:
-                        msger.warning("vdso is enabled on your host, which might "
-                            "cause problems with mipsel emulations.\n"
-                            "\tYou can disable vdso with following command before "
-                            "starting image build:\n"
-                            "\techo 0 | sudo tee /proc/sys/vm/vdso_enabled")
+            if os.path.exists("/proc/sys/vm/vdso_enabled"):
+                vdso_fh = open("/proc/sys/vm/vdso_enabled","r")
+                vdso_value = vdso_fh.read().strip()
+                vdso_fh.close()
+                if (int)(vdso_value) == 1:
+                    msger.warning("vdso is enabled on your host, which might "
+                        "cause problems with arm emulations.\n"
+                        "\tYou can disable vdso with following command before "
+                        "starting image build:\n"
+                        "\techo 0 | sudo tee /proc/sys/vm/vdso_enabled")
 
         # make sure the specified tmpdir and cachedir exist
         if not os.path.exists(self.tmpdir):

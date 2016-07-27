@@ -9,7 +9,7 @@
 
 Name:       mic
 Summary:    Image Creator for Linux Distributions
-Version:    0.27
+Version:    0.27.1
 Release:    %{?release_prefix}%{?opensuse_bs:<CI_CNT>.<B_CNT>}%{!?opensuse_bs:0}
 Group:      Development/Tools
 License:    GPLv2
@@ -53,7 +53,6 @@ It is composed of three subcommand\: create, convert, chroot. Subcommand create
 is used to create images with different types; subcommand convert is used to
 convert an image to a specified type; subcommand chroot is used to chroot into
 an image.
-
 
 %prep
 %setup -q -n %{name}-%{version}
