@@ -597,3 +597,6 @@ class RawImageCreator(BaseImageCreator):
         if self.compress_image:
             self.image_files.update({'compress': self.compress_image})
         super(RawImageCreator, self).create_manifest()
+
+    def remove_exclude_image(self):
+        pass
