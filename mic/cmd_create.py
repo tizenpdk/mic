@@ -54,11 +54,28 @@ def main(parser, args, argv):
                                % args.logfile)
         configmgr.create['logfile'] = logfile_abs_path
         configmgr.set_logfile()
-    
+
     if args.subcommand == "auto":
         do_auto(parser, args.ksfile, argv)
         return
-        
+
+    if args.interactive:
+        msger.enable_interactive()
+    else:
+        msger.disable_interactive()
+
+    if args.verbose:
+        msger.set_loglevel('VERBOSE')
+
+    if args.debug:
+        try:
+            import rpm
+            rpm.setVerbosity(rpm.RPMLOG_NOTICE)
+        except ImportError:
+            pass
+
+        msger.set_loglevel('DEBUG')
+
     #check the imager type
     createrClass = None
     for subcmd, klass in pluginmgr.get_plugins('imager').iteritems():

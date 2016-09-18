@@ -123,16 +123,25 @@ def create_parser(parser):
                                dest='strict_mode', default=False,
                                help='Abort creation of image, if there are some errors'
                                     ' during rpm installation. ')
+     
+    parent_parser.add_argument('-d', '--debug', action='store_true',
+                               help='debug output')
+    parent_parser.add_argument('-v', '--verbose', action='store_true',
+                                help='verbose output')
+    parent_parser.add_argument('-i', '--interactive', action='store_true',
+                                dest='interactive', default=True,
+                               help='interactive output')
+
     parser.set_defaults(alias="cr")
 
     subparsers  = parser.add_subparsers(title='Subcommands', dest='subcommand')
     auto_parser = subparsers.add_parser('auto', parents=[parent_parser], help='auto detect image type from magic header')
-    
-    fs_parser   = subparsers.add_parser('fs', parents=[parent_parser], 
+
+    fs_parser   = subparsers.add_parser('fs', parents=[parent_parser],
                                         help='create fs image')
     fs_parser.add_argument("--include-src", dest = "include_src",action = "store_true",
                            default = False, help = "Generate a image with source rpms included")
-                  
+
     loop_parser = subparsers.add_parser('loop', parents=[parent_parser], help='create loop image')
 
     loop_parser.add_argument("--compress-disk-image", dest="compress_image",
