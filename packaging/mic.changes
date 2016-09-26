@@ -1,3 +1,7 @@
+* Wed Sep 28 2016 SoonKyu Park <sk7.park@samsung.com> - 0.27.2
+  * Add exclude-from-image option to exclude specific images
+  * Add subcommand option parameters(-v, -d, -i)
+
 * Wed May 25 2016 Jianzhong Fang <jz.fang@samsung.com> - 0.27.1
   * new distribution support: Ubuntu 16.04, Fedora 23
   * add raw image format support
