@@ -1,3 +1,18 @@
+MIC Image Creator 0.27.3 Release Notes
+======================================
+Released Dec 19 2016
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * Show pkgid when install pkg error
+  * support vdfs and squashfs image creation
+
+Bug Fixes
+---------
+
 MIC Image Creator 0.27.2 Release Notes
 ======================================
 Released Sep 28 2016
