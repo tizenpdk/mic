@@ -1,3 +1,7 @@
+* Mon Dec 19 2016 Jiankang Fan <jiankang.fan@samsung.com> - 0.27.3
+  * Show pkgid when install pkg error
+  * support vdfs and squashfs image creation
+
 * Wed Sep 28 2016 SoonKyu Park <sk7.park@samsung.com> - 0.27.2
   * Add exclude-from-image option to exclude specific images
   * Add subcommand option parameters(-v, -d, -i)
