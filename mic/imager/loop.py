@@ -28,7 +28,8 @@ from mic.archive import packing, compressing
 
 # The maximum string length supported for LoopImageCreator.fslabel
 FSLABEL_MAXLEN = 32
-
+# Support for Read-only file system list
+AFTER_MNT_FS = {"squashfs":".sqsh", "vdfs":".vdfs"}
 
 def save_mountpoints(fpath, loops, arch = None):
     """Save mount points mapping to file
@@ -126,12 +127,18 @@ class LoopImageCreator(BaseImageCreator):
                                                        "ext3")
             self.__fsopts = kickstart.get_image_fsopts(self.ks,
                                                        "defaults,noatime")
+            if self.__fstype in AFTER_MNT_FS.keys():
+                self.__fstype = "ext4"
 
             allloops = []
             for part in sorted(kickstart.get_partitions(self.ks),
                                key=lambda p: p.mountpoint):
+                aft_fstype = None
                 if part.fstype == "swap":
                     continue
+                elif part.fstype in AFTER_MNT_FS.keys():
+                    aft_fstype = part.fstype
+                    part.fstype = "ext4"
 
                 label = part.label
                 mp = part.mountpoint
@@ -153,7 +160,10 @@ class LoopImageCreator(BaseImageCreator):
                     'name': imgname,
                     'size': part.size or 4096L * 1024 * 1024,
                     'fstype': part.fstype or 'ext3',
+                    'aft_fstype': aft_fstype or None,
                     'extopts': part.extopts or None,
+                    'vdfsopts': part.vdfsopts or None,
+                    'squashfsopts': part.squashfsopts or None,
                     'loop': None,  # to be created in _mount_instroot
                     'uuid': part.uuid or None,
                     'kspart' : part,
@@ -180,7 +190,12 @@ class LoopImageCreator(BaseImageCreator):
         if not self._instloops:
             return None
 
-        return [lo['name'] for lo in self._instloops]
+        names = []
+        for lo in self._instloops :
+            names.append(lo['name'])
+            for ro in AFTER_MNT_FS.values():
+                names.append(lo['name'].replace('.img',ro))
+        return list(set(names))
 
     def _set_fstype(self, fstype):
         self.__fstype = fstype
@@ -391,6 +406,43 @@ class LoopImageCreator(BaseImageCreator):
 
         for item in self._instloops:
             imgfile = os.path.join(self._imgdir, item['name'])
+
+            if item['aft_fstype'] in AFTER_MNT_FS.keys():
+                mountpoint = misc.mkdtemp()
+                ext4img = os.path.join(self._imgdir, item['name'])
+                runner.show('mount -t ext4 %s %s' % (ext4img, mountpoint))
+                runner.show('ls -al %s' % (mountpoint))
+#                item['loop'].mount(None, 'not_create')
+#                point_mnt = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
+
+                fs_suffix = AFTER_MNT_FS[item['aft_fstype']]
+                if item['aft_fstype'] == "squashfs":
+#                    fs.mksquashfs(mountpoint, self._outdir+"/"+item['label']+fs_suffix)
+                    args = "mksquashfs " + mountpoint + " " + self._imgdir+"/"+item['label']+fs_suffix
+                    if item['squashfsopts']:
+                        squashfsopts=item['squashfsopts'].replace(',', ' ')
+                        runner.show("mksquashfs --help")
+                        runner.show("%s %s" % (args, squashfsopts))
+                    else:
+                        runner.show("%s " % args)
+
+                if item['aft_fstype'] == "vdfs":
+                    ##FIXME temporary code - replace this with fs.mkvdfs()
+                    if item['vdfsopts']:
+                        vdfsopts=item['vdfsopts'].replace(',', ' ')
+                    else:
+                        vdfsopts="-i -z 1024M"
+
+                    fullpathmkvdfs = "mkfs.vdfs" #find_binary_path("mkfs.vdfs")
+                    runner.show("%s --help" % fullpathmkvdfs)
+#                    fs.mkvdfs(mountpoint, self._outdir+"/"+item['label']+fs_suffix, vdfsopts)
+                    runner.show('%s %s -r %s %s' % (fullpathmkvdfs, vdfsopts, mountpoint, self._imgdir+"/"+item['label']+fs_suffix))
+
+                runner.show('umount %s' % mountpoint)
+#               os.unlink(mountpoint)
+                runner.show('mv %s %s' % (self._imgdir+"/"+item['label']+fs_suffix, self._imgdir+"/"+item['label']+".img") )
+                runner.show('ls -al %s' % self._imgdir)
+
             if item['fstype'] == "ext4":
                 runner.show('/sbin/tune2fs -O ^huge_file,extents,uninit_bg %s '
                             % imgfile)

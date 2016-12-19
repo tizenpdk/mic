@@ -29,6 +29,8 @@ class Mic_PartData(FC4_PartData):
         self.part_type = kwargs.get("part_type", None)
         self.uuid = kwargs.get("uuid", None)
         self.exclude_image = kwargs.get("exclude_from_image", False)
+        self.vdfsopts = kwargs.get("vdfsopts", None)
+        self.squashfsopts = kwargs.get("squashfsopts", None)
 
     def _getArgsAsStr(self):
         retval = FC4_PartData._getArgsAsStr(self)
@@ -43,6 +45,10 @@ class Mic_PartData(FC4_PartData):
             retval += " --uuid=%s" % self.uuid
         if self.exclude_image:
             retval += " --exclude-from-image"
+        if self.vdfsopts:
+            retval += " --vdfsoptions=%s" % self.vdfsopts
+        if self.squashfsopts:
+            retval += " --squashfsoptions=%s" % self.squashfsopts
 
         return retval
 
@@ -63,4 +69,8 @@ class Mic_Partition(FC4_Partition):
         op.add_option("--uuid", dest="uuid", action="store", type="string")
         op.add_option("--exclude-from-image", action="store_true", dest="exclude_image",
                       default=False)
+        op.add_option("--vdfsoptions", type="string", action="store", dest="vdfsopts",
+                      default=None)
+        op.add_option("--squashfsoptions", type="string", action="store", dest="squashfsopts",
+                      default=None)
         return op

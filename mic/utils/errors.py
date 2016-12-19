@@ -72,6 +72,10 @@ class SquashfsError(CreatorError):
     """ Error class for Squashfs related """
     keyword = 'Squashfs'
 
+class VdfsError(CreatorError):
+    """ Error class for Vdfs related """
+    keyword = 'vdfs'
+
 class BootstrapError(CreatorError):
     """ Error class for Bootstrap related """
     keyword = 'Bootstrap'

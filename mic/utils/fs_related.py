@@ -69,6 +69,21 @@ def makedirs(dirname):
         if err.errno != errno.EEXIST:
             raise
 
+def mkvdfs(in_img, out_img, fsoptions):
+     """ This function is incomplete. """
+     fullpathmkvdfs = find_binary_path("mkfs.vdfs")
+#     args = fullpathmkvdfs + " -i -r "+ in_img + " -z 1024M -s " + out_img 
+     args = fullpathmkvdfs + " " + fsoptions + " -r " + in_img + " " + out_img
+     msger.verbose("vdfs args: %s" % args)
+     runner.show("%s --help" % fullpathmkvdfs)
+#     if not sys.stdout.isatty(): 
+#         args.append("-no-progress")
+#     runner.show("%s --help" % fullpathmkvdfs)
+     ret = runner.show(args)
+     if ret != 0:
+         runner.show ("vdfs error")
+         raise VdfsError("' %s' exited with error (%d)" % (args, ret))
+
 def mksquashfs(in_img, out_img):
     fullpathmksquashfs = find_binary_path("mksquashfs")
     args = [fullpathmksquashfs, in_img, out_img]
