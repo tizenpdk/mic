@@ -1004,7 +1004,15 @@ class BaseImageCreator(object):
                         continue
              
             return False
-            
+
+        def showErrorInfo(filepath):
+            if os.path.isfile(filepath):
+                msger.info("The error install package info:")
+                for line in open(filepath):
+                    msger.info(line)
+            else:
+                msger.info("%s is not found." % filepath)
+
         def get_ssl_verify(ssl_verify=None):
             if ssl_verify is not None:
                 return not ssl_verify.lower().strip() == 'no'
@@ -1086,6 +1094,7 @@ class BaseImageCreator(object):
             pkg_manager.close()
 
         if checkScriptletError(self._instroot + "/tmp/.postscript/error/", "_error"):
+            showErrorInfo(self._instroot + "/tmp/.preload_install_error")
             raise CreatorError('scriptlet errors occurred')
             
         # hook post install
