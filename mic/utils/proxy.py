@@ -77,6 +77,8 @@ def _ip_to_int(ip):
     ipint = 0
     shift = 24
     for dec in ip.split("."):
+        if not dec.isdigit():
+            continue
         ipint |= int(dec) << shift
         shift -= 8
     return ipint
@@ -129,6 +131,8 @@ def _set_noproxy_list():
                 shift = 24
                 netmask = 0
                 for dec in mask.split("."):
+                    if not dec.isdigit():
+                        continue
                     netmask |= int(dec) << shift
                     shift -= 8
                 ip &= netmask
