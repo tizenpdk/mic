@@ -2,7 +2,7 @@ mic (0.27.3) unstable; urgency=low
   * support vdfs and squashfs image creation
   * Show pkgid when install pkg error
 
- -- Jiankang Fan <jiankang.fan@samsung.com> Mon, 19 Dec 2016 15:00:00 +0800
+ -- Jiankang Fan <jiankang.fan@samsung.com>  Mon, 19 Dec 2016 15:00:00 +0800
 
 mic (0.27.2) unstable; urgency=low
   * Add exclude-from-image option to exclude specific images 
