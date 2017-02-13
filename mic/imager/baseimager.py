@@ -1028,9 +1028,8 @@ class BaseImageCreator(object):
 
         def showErrorInfo(filepath):
             if os.path.isfile(filepath):
-                msger.info("The error install package info:")
                 for line in open(filepath):
-                    msger.info(line)
+                    msger.info("The error install package info: %s" % line)
             else:
                 msger.info("%s is not found." % filepath)
 
