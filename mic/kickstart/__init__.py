@@ -167,6 +167,12 @@ class LanguageConfig(KickstartConfig):
             f.write("LANG=\"" + kslang.lang + "\"\n")
             f.close()
 
+            #cp ks lang setting to other file, then can access the file in %post section
+            fs.makedirs(self.path("/etc/config"))
+            f = open(self.path("/etc/config/mic_language"), "w+")
+            f.write("LANG=\"" + kslang.lang + "\"\n")
+            f.close()
+
 class KeyboardConfig(KickstartConfig):
     """A class to apply a kickstart keyboard configuration to a system."""
     @apply_wrapper
