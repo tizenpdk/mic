@@ -1164,8 +1164,8 @@ class BaseImageCreator(object):
                                        env = env,
                                        stdout = subprocess.PIPE,
                                        stderr = subprocess.STDOUT)
-                    for entry in p.communicate()[0].splitlines():
-                        msger.info(entry)
+                    while p.poll() == None:
+                    	msger.info(p.stdout.readline().strip())
                 except OSError, (err, msg):
                     raise CreatorError("Failed to execute %%post script "
                                        "with '%s' : %s" % (s.interp, msg))
