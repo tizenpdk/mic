@@ -1,3 +1,21 @@
+MIC Image Creator 0.27.4 Release Notes
+======================================
+Released Apr 5 2017
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * Fixup changelog that causes errors
+  * Merge add mipsel register on binfmt_misc && Add support of qemu-mipsel patch
+  * Replace 'copy' to 'symbolic link' in timeznoe setting inside mic
+  * Copy ks setting lang to file /etc/config/mic_language for other use
+  * Show logs inside 'Running scripts' in mic
+
+Bug Fixes
+---------
+
 MIC Image Creator 0.27.3 Release Notes
 ======================================
 Released Dec 19 2016
