@@ -203,12 +203,12 @@ class TimezoneConfig(KickstartConfig):
         tz_source = "/usr/share/zoneinfo/%s" % (tz)
         tz_dest = "/etc/localtime"
         try:
-            cpcmd = fs.find_binary_inchroot('ln', self.instroot)
-            if cpcmd:
-                self.call([cpcmd, "-s", tz_source, tz_dest])
+            lncmd = fs.find_binary_inchroot('ln', self.instroot)
+            if lncmd:
+                self.call([lncmd, "-s", tz_source, tz_dest])
             else:
-                cpcmd = fs.find_binary_path('ln')
-                subprocess.call([cpcmd, "-s",
+                lncmd = fs.find_binary_path('ln')
+                subprocess.call([lncmd, "-s",
                                  self.path(tz_source),
                                  self.path(tz_dest)])
         except (IOError, OSError), (errno, msg):
