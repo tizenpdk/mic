@@ -54,7 +54,7 @@ def chroot_parser(parser):
                         help = "command which will be executed in chroot environment")
     parser.set_defaults(alias="ch")
     return parser
-    
+
 @subparser
 def create_parser(parser):
     """create an image
@@ -64,15 +64,18 @@ def create_parser(parser):
     """
 
     parent_parser = ArgumentParser(add_help=False)
-    parent_parser.add_argument('ksfile', help='Path of ksfile');
+    parent_parser.add_argument('--cpio', action='store_true',
+                                dest='cpio', default=False,
+                               help='Use cpio to generate image')
+    parent_parser.add_argument('ksfile', help='Path of ksfile')
     parent_parser.add_argument('--logfile', dest='logfile', default=None,
                                help='Path of logfile')
     parent_parser.add_argument('-c', '--config', dest='config', default=None,
-                               help='Specify config file for mic')                
+                               help='Specify config file for mic')
     parent_parser.add_argument('-k', '--cachedir', action='store',
                                dest='cachedir', default=None,
                                help='Cache directory to store the downloaded')
-    parent_parser.add_argument('-o', '--outdir', action='store', dest='outdir', 
+    parent_parser.add_argument('-o', '--outdir', action='store', dest='outdir',
                                default=None, help='Output directory')
     parent_parser.add_argument('-A', '--arch', dest='arch', default=None,
                                help='Specify repo architecture')

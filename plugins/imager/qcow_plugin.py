@@ -133,6 +133,8 @@ class QcowPlugin(ImagerPlugin):
             creator.install()
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
+            if creatoropts['cpio']:
+                creator.create_cpio_image()
             creator.unmount()
             creator.package(creatoropts["destdir"])
             creator.create_manifest()

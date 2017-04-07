@@ -146,6 +146,8 @@ def main(parser, args, argv):
 
     if args.pack_to is not None:
         configmgr.create['pack_to'] = args.pack_to
+    if args.cpio:
+    	configmgr.create['cpio'] = args.cpio 
 
     if args.copy_kernel:
         configmgr.create['copy_kernel'] = args.copy_kernel
