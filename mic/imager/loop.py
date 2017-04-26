@@ -164,6 +164,7 @@ class LoopImageCreator(BaseImageCreator):
                     'extopts': part.extopts or None,
                     'vdfsopts': part.vdfsopts or None,
                     'squashfsopts': part.squashfsopts or None,
+                    'cpioopts': part.cpioopts or None,
                     'loop': None,  # to be created in _mount_instroot
                     'uuid': part.uuid or None,
                     'kspart' : part,
@@ -308,10 +309,11 @@ class LoopImageCreator(BaseImageCreator):
         """
         minsize = 0
         for item in self._instloops:
-            if item['name'] == self._img_name:
-                minsize = item['loop'].resparse(size)
-            else:
-                item['loop'].resparse(size)
+            if not item['cpioopts']:
+                if item['name'] == self._img_name:
+                    minsize = item['loop'].resparse(size)
+                else:
+                    item['loop'].resparse(size)
 
         return minsize
 

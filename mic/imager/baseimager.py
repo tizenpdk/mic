@@ -87,7 +87,6 @@ class BaseImageCreator(object):
         self.pack_to = None
         self.repourl = {}
         self.multiple_partitions = False
-        self.cpio = False
 
         # If the kernel is save to the destdir when copy_kernel cmd is called.
         self._need_copy_kernel = False
@@ -153,6 +152,8 @@ class BaseImageCreator(object):
                 if part.fstype and part.fstype == "btrfs":
                     self._dep_checks.append("mkfs.btrfs")
                     break
+                if part.fstype == "cpio":
+                    part.fstype = "ext4"
             if len(self.ks.handler.partition.partitions) > 1:
                 self.multiple_partitions = True
 
@@ -1251,27 +1252,25 @@ class BaseImageCreator(object):
                 self._instloops.remove(item)
 
     def create_cpio_image(self):
-        if self.cpio:
-            cpiomountdir = self._instroot + '/mnt/initrd'
-            if os.path.exists(cpiomountdir):
+        for item in self._instloops:
+            if item['cpioopts']:
                 msger.info("Create image by cpio.")
-                imgfile = os.path.join(self._imgdir, 'ramdisk.img')
+                imgfile = os.path.join(self._imgdir, item['name'])
                 if imgfile:
                     os.remove(imgfile)
                 try:
                     cpiocmd = fs.find_binary_path('cpio')
                     if cpiocmd:
                         oldoutdir = os.getcwd()
+                        cpiomountdir = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
                         os.chdir(cpiomountdir)
                         # find . | cpio --create --'format=newc' | gzip > ../ramdisk.img
-                        runner.show('find . | cpio -o -H newc | gzip > %s' % imgfile)
+                        runner.show('find . | cpio --create --format=%s | gzip > %s' % (item['cpioopts'], imgfile))
                         shutil.rmtree(cpiomountdir, ignore_errors=True)
                         fs.makedirs(cpiomountdir)
                         os.chdir(oldoutdir)
                 except OSError, (errno, msg):
                     raise errors.KsError("Create image by cpio error: %s" % msg)
-            else:
-                msger.warning("Do not create image by cpio. There is no directory '/mnt/initrd'.")
 
     def package(self, destdir = "."):
         """Prepares the created image for final delivery.

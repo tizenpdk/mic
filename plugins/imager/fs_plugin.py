@@ -95,7 +95,6 @@ class FsPlugin(ImagerPlugin):
             #Download the source packages ###private options
             if args.include_src:
                 installed_pkgs =  creator.get_installed_packages()
-                msger.info('--------------------------------------------------')
                 msger.info('Generating the image with source rpms included ...')
                 if not misc.SrcpkgsDownload(installed_pkgs, creatoropts["repomd"],
                         creator._instroot, creatoropts["cachedir"]):
@@ -103,8 +102,6 @@ class FsPlugin(ImagerPlugin):
 
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
-            if creatoropts['cpio']:
-                creator.create_cpio_image()
             creator.unmount()
             creator.package(creatoropts["destdir"])
             creator.create_manifest()

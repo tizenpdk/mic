@@ -31,6 +31,7 @@ class Mic_PartData(FC4_PartData):
         self.exclude_image = kwargs.get("exclude_from_image", False)
         self.vdfsopts = kwargs.get("vdfsopts", None)
         self.squashfsopts = kwargs.get("squashfsopts", None)
+        self.cpioopts = kwargs.get("cpioopts", None)
 
     def _getArgsAsStr(self):
         retval = FC4_PartData._getArgsAsStr(self)
@@ -49,7 +50,8 @@ class Mic_PartData(FC4_PartData):
             retval += " --vdfsoptions=%s" % self.vdfsopts
         if self.squashfsopts:
             retval += " --squashfsoptions=%s" % self.squashfsopts
-
+        if self.cpioopts:
+            retval += " --cpiooptions=%s" % self.cpioopts
         return retval
 
 class Mic_Partition(FC4_Partition):
@@ -72,5 +74,7 @@ class Mic_Partition(FC4_Partition):
         op.add_option("--vdfsoptions", type="string", action="store", dest="vdfsopts",
                       default=None)
         op.add_option("--squashfsoptions", type="string", action="store", dest="squashfsopts",
+                      default=None)
+        op.add_option("--cpiooptions", type="string", action="store", dest="cpioopts",
                       default=None)
         return op
