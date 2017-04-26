@@ -100,8 +100,6 @@ class RawPlugin(ImagerPlugin):
             creator.install()
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
-            if creatoropts['cpio']:
-                creator.create_cpio_image()
             creator.unmount()
             creator.generate_bmap()
             creator.package(creatoropts["destdir"])
