@@ -1,3 +1,7 @@
+Release 0.27.5 - Fri Apr 28 2017 - Yuhuan Yang <yuhuan.yang@samsung.com>
+=====================================================================
+  * Use e2fsck to clean image, relevant issue is NJTS-179 in JIRA.
+
 Release 0.27.4 - Wed Apr 5 2017 - SoonKyu Park <sk7.park@samsung.com>
 =====================================================================
   * Fixup changelog that causes errors

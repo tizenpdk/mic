@@ -1,3 +1,17 @@
+MIC Image Creator 0.27.5 Release Notes
+======================================
+Released Apr 28 2017
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * Use e2fsck to clean image, relevant issue is NJTS-179 in JIRA.
+
+Bug Fixes
+---------
+
 MIC Image Creator 0.27.4 Release Notes
 ======================================
 Released Apr 5 2017
