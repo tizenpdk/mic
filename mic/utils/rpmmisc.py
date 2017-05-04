@@ -188,6 +188,20 @@ class RPMInstallCallback:
 
         elif what == rpm.RPMCALLBACK_REPACKAGE_PROGRESS:
             pass
+        elif what == rpm.RPMCALLBACK_SCRIPT_ERROR:
+            if h is not None:
+                try:
+                    hdr, rpmloc = h
+                except:
+                    rpmloc = h
+
+                m = re.match("(.*)-(\d+.*)-(\d+\.\d+)\.(.+)\.rpm", os.path.basename(rpmloc))
+                if m:
+                    pkgname = m.group(1)
+                else:
+                    pkgname = os.path.basename(rpmloc)
+
+                msger.warning('(%s) Post script failed' % pkgname)
 
 def readRpmHeader(ts, filename):
     """ Read an rpm header. """
