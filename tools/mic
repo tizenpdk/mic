@@ -265,7 +265,7 @@ def main(argv):
     if args.debug:
         try:
             import rpm
-            rpm.setVerbosity(rpm.RPMLOG_NOTICE)
+            rpm.setVerbosity(rpm.RPMLOG_DEBUG)
         except ImportError:
             pass
 
