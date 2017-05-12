@@ -27,6 +27,7 @@
  'create, chroot, convert' and also some parameters for command 'mic'.
 """
 import os
+import signal
 import sys
 import errno
 
@@ -197,6 +198,12 @@ def main(argv):
                     if args.get('action') in (None, 'store', 'append'):
                         return True
                     return False
+
+    def sigterm_handler(signal, frame):
+        raise errors.Abort('\nSIGTERM catched, program aborted.')
+
+    # Add SIGTERM handler for exit gracefully
+    signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Create top level parser
     epilog = "Try 'mic SUBCOMMAND --help' for help on a specific subcommand."
