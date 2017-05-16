@@ -934,12 +934,6 @@ def setup_qemu_emulator(rootdir, arch):
         msger.info('Try to disable selinux')
         runner.show(["/usr/sbin/setenforce", "0"])
 
-    # unregister it if it has been registered and is a dynamically-linked executable
-    if os.path.exists(node):
-        qemu_unregister_string = "-1\n"
-        with open(node, "w") as fd:
-            fd.write(qemu_unregister_string)
-
     # register qemu emulator for interpreting other arch executable file
     if not os.path.exists(node):
         if arch == "aarch64":
