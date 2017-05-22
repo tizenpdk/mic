@@ -446,9 +446,10 @@ class LoopImageCreator(BaseImageCreator):
                 runner.show('ls -al %s' % self._imgdir)
 
             if item['fstype'] == "ext4":
-                runner.show('/sbin/tune2fs -O ^huge_file,extents,uninit_bg %s '
+                if not item['cpioopts']:
+                    runner.show('/sbin/tune2fs -O ^huge_file,extents,uninit_bg %s '
                             % imgfile)
-                runner.quiet(["/sbin/e2fsck", "-f", "-y", imgfile])
+                    runner.quiet(["/sbin/e2fsck", "-f", "-y", imgfile])
             self.image_files.setdefault('partitions', {}).update(
                     {item['mountpoint']: item['label']})
             if self.compress_image:
