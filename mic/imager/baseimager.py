@@ -30,13 +30,15 @@ import json
 from datetime import datetime
 
 import rpm
-
+import time
 from mic import kickstart
 from mic import msger, __version__ as VERSION
 from mic.utils.errors import CreatorError, Abort
 from mic.utils import misc, grabber, runner, fs_related as fs
 from mic.chroot import kill_proc_inchroot
 from mic.archive import get_archive_suffixes
+#post script max run time
+MAX_RUN_TIME = 120
 
 class BaseImageCreator(object):
     """Installs a system to a chroot directory.
@@ -1158,6 +1160,7 @@ class BaseImageCreator(object):
                 preexec = self._chroot
                 script = "/tmp/" + os.path.basename(path)
 
+            start_time = time.time()
             try:
                 try:
                     p = subprocess.Popen([s.interp, script],
@@ -1167,6 +1170,9 @@ class BaseImageCreator(object):
                                        stderr = subprocess.STDOUT)
                     while p.poll() == None:
                     	msger.info(p.stdout.readline().strip())
+                        end_time = time.time()
+                        if (end_time - start_time)/60 > MAX_RUN_TIME:
+                            raise CreatorError("Your post script is executed more than "+MAX_RUN_TIME+"mins, please check it!")
                 except OSError, (err, msg):
                     raise CreatorError("Failed to execute %%post script "
                                        "with '%s' : %s" % (s.interp, msg))
