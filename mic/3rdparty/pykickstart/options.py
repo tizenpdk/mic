@@ -137,11 +137,11 @@ def _check_ksboolean(option, opt, value):
         raise OptionValueError(_("Option %(opt)s: invalid boolean value: %(value)r") % mapping)
 
 def _check_string(option, opt, value):
-    if len(value) > 2 and value.startswith("--"):
-        mapping = {"opt": opt, "value": value}
-        raise OptionValueError(_("Option %(opt)s: invalid string value: %(value)r") % mapping)
-    else:
-        return value
+    #if len(value) > 2 and value.startswith("--"):
+        #mapping = {"opt": opt, "value": value}
+        #raise OptionValueError(_("Option %(opt)s: invalid string value: %(value)r") % mapping)
+   # else:
+    return value
 
 # Creates a new Option class that supports several new attributes:
 # - required:  any option with this attribute must be supplied or an exception

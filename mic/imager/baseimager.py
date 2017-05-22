@@ -1265,7 +1265,7 @@ class BaseImageCreator(object):
                         cpiomountdir = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
                         os.chdir(cpiomountdir)
                         # find . | cpio --create --'format=newc' | gzip > ../ramdisk.img
-                        runner.show('find . | cpio --create --format=%s | gzip > %s' % (item['cpioopts'], imgfile))
+                        runner.show('find . | cpio --create %s | gzip > %s' % (item['cpioopts'], imgfile))
                         shutil.rmtree(cpiomountdir, ignore_errors=True)
                         fs.makedirs(cpiomountdir)
                         os.chdir(oldoutdir)
