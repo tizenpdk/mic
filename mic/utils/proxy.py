@@ -18,6 +18,7 @@
 import os
 import re
 import urlparse
+from mic import msger
 
 _my_proxies = {}
 _my_noproxy = None
@@ -103,6 +104,28 @@ def _set_noproxy_list():
     _my_noproxy_list = []
     if not _my_noproxy:
         return
+
+    #solve in /etc/enviroment contains command like `echo 165.xxx.xxx.{1..255} | sed 's/ /,/g'``
+    _my_noproxy_bak = _my_noproxy
+    start = _my_noproxy.find("`")
+    while(start < len(_my_noproxy) and start != -1):
+        start = _my_noproxy.find("`",start)
+        end = _my_noproxy.find("`",start+1)
+        cmd = _my_noproxy[start+1:end]
+        pstr = _my_noproxy[start:end+1]
+        start = end + 1
+
+        _my_noproxy=_my_noproxy.replace(pstr,len(pstr)*" ")
+        try:
+            c_result = os.popen(cmd).readlines()
+            if len(c_result) == 0:
+                continue
+        except Exception,e:
+            msger.warning(str(e))
+            continue
+        to_list = c_result[0].strip("\n").split(",")
+        _my_noproxy_list.extend(to_list)
+
     for item in _my_noproxy.split(","):
         item = item.strip()
         if not item:
@@ -138,6 +161,7 @@ def _set_noproxy_list():
                 ip &= netmask
 
             _my_noproxy_list.append({"match":2, "needle":ip, "netmask":netmask})
+    _my_noproxy = _my_noproxy_bak
 
 def _isnoproxy(url):
     host = urlparse.urlparse(url)[1]
