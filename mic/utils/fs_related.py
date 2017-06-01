@@ -990,7 +990,6 @@ def get_loop_device(losetupcmd, lofile):
         try:
             fcntl.flock(fp, fcntl.LOCK_UN)
             fp.close()
-            os.unlink(DEVICE_LOCKFILE)
         except:
             pass
 
