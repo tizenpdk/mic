@@ -133,6 +133,7 @@ class RedirectedStderr(object):
         """ Truncate the tempfile to size zero """
         if self.tmpfile:
             os.ftruncate(self.tmpfile.fileno(), 0)
+            os.lseek(self.tmpfile.fileno(), 0, os.SEEK_SET)
 
     def redirect(self):
         """ Redirect stderr to the temp file """
@@ -154,6 +155,7 @@ class RedirectedStderr(object):
             self.tmpfile.seek(0, 0)
             self.value = self.tmpfile.read()
             os.ftruncate(self.tmpfile.fileno(), 0)
+            os.lseek(self.tmpfile.fileno(), 0, os.SEEK_SET)
             return self.value
         return None
 
