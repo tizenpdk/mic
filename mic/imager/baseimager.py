@@ -145,8 +145,8 @@ class BaseImageCreator(object):
 
         self.image_format = None
 
-        # Save qemu emulator file name in order to clean up it finally
-        self.qemu_emulator = None
+        # Save qemu emulator file names in order to clean up it finally
+        self.qemu_emulators = []
 
         # No ks provided when called by convertor, so skip the dependency check
         if self.ks:
@@ -825,7 +825,7 @@ class BaseImageCreator(object):
 
         if self.target_arch and self.target_arch.startswith("arm") or \
             self.target_arch == "aarch64":
-            self.qemu_emulator = misc.setup_qemu_emulator(self._instroot,
+            self.qemu_emulators = misc.setup_qemu_emulator(self._instroot,
                                                           self.target_arch)
 
         self.get_cachedir(cachedir)
@@ -866,8 +866,8 @@ class BaseImageCreator(object):
             if not os.path.islink(mtab):
                 os.unlink(self._instroot + "/etc/mtab")
 
-            if self.qemu_emulator:
-                os.unlink(self._instroot + self.qemu_emulator)
+            for qemu_emulator in self.qemu_emulators:
+                os.unlink(self._instroot + qemu_emulator)
         except OSError:
             pass
 

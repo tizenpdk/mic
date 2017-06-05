@@ -898,6 +898,7 @@ def is_statically_linked(binary):
     return ", statically linked, " in runner.outs(['file', binary])
 
 def setup_qemu_emulator(rootdir, arch):
+    qemu_emulators = []
     # mount binfmt_misc if it doesn't exist
     if not os.path.exists("/proc/sys/fs/binfmt_misc"):
         modprobecmd = find_binary_path("modprobe")
@@ -940,6 +941,7 @@ def setup_qemu_emulator(rootdir, arch):
     if not os.path.exists(rootdir + "/usr/bin"):
         makedirs(rootdir + "/usr/bin")
     shutil.copy(qemu_emulator, rootdir + qemu_emulator)
+    qemu_emulators.append(qemu_emulator)
 
     # disable selinux, selinux will block qemu emulator to run
     if os.path.exists("/usr/sbin/setenforce"):
@@ -957,8 +959,26 @@ def setup_qemu_emulator(rootdir, arch):
 
         with open("/proc/sys/fs/binfmt_misc/register", "w") as fd:
             fd.write(qemu_arm_string)
+    else:
+        flags = ""
+        interpreter = ""
+        with open(node, "r") as fd:
+            for line in fd.readlines():
+                if line.startswith("flags:"):
+                    flags = line[len("flags:"):].strip()
+                elif line.startswith("interpreter"):
+                    interpreter = line[len("interpreter"):].strip()
 
-    return qemu_emulator
+        if flags == "P" and interpreter.endswith("-binfmt"):
+            # copy binfmt wrapper when preserve-argv[0] flag is enabled
+            shutil.copy(os.path.realpath(interpreter), rootdir + interpreter)
+            qemu_emulators.append(interpreter)
+        elif not flags and interpreter != qemu_emulator:
+            # create symlink as registered qemu emulator
+            os.symlink(qemu_emulator, rootdir + interpreter)
+            qemu_emulators.append(interpreter)
+
+    return qemu_emulators
 
 def SrcpkgsDownload(pkgs, repometadata, instroot, cachedir):
     def get_source_repometadata(repometadata):

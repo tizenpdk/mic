@@ -304,11 +304,11 @@ def chroot(chrootdir, bindmounts = None, execute = "/bin/bash"):
 
     arch = ELF_arch(chrootdir)
     if arch == "arm":
-        qemu_emulator = misc.setup_qemu_emulator(chrootdir, "arm")
+        qemu_emulators = misc.setup_qemu_emulator(chrootdir, "arm")
     elif arch == "mipsel":
-        qemu_emulator = misc.setup_qemu_emulator(chrootdir, "mipsel")
+        qemu_emulators = misc.setup_qemu_emulator(chrootdir, "mipsel")
     else:
-        qemu_emulator = None
+        qemu_emulators = []
 
     savefs_before_chroot(chrootdir, None)
 
@@ -326,5 +326,5 @@ def chroot(chrootdir, bindmounts = None, execute = "/bin/bash"):
 
     finally:
         cleanup_chrootenv(chrootdir, bindmounts, globalmounts)
-        if qemu_emulator:
+        for qemu_emulator in qemu_emulators:
             os.unlink(chrootdir + qemu_emulator)
