@@ -706,7 +706,7 @@ class BaseImageCreator(object):
         return self.cachedir
 
     def __sanity_check(self):
-        """Ensure that the config we've been given is sane."""
+        """Ensure that the config we've been given is same."""
         if not (kickstart.get_packages(self.ks) or
                 kickstart.get_groups(self.ks)):
             raise CreatorError("No packages or groups specified")
@@ -1268,15 +1268,26 @@ class BaseImageCreator(object):
                     cpiocmd = fs.find_binary_path('cpio')
                     if cpiocmd:
                         oldoutdir = os.getcwd()
-                        cpiomountdir = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
+                        cpiomountdir = os.path.join(self._imgdir, item['mountpoint'].lstrip('/'))
                         os.chdir(cpiomountdir)
                         # find . | cpio --create --'format=newc' | gzip > ../ramdisk.img
                         runner.show('find . | cpio --create %s | gzip > %s' % (item['cpioopts'], imgfile))
                         shutil.rmtree(cpiomountdir, ignore_errors=True)
-                        fs.makedirs(cpiomountdir)
                         os.chdir(oldoutdir)
                 except OSError, (errno, msg):
                     raise errors.KsError("Create image by cpio error: %s" % msg)
+    def copy_cpio_resource(self):
+        for item in self._instloops:
+            if item['cpioopts']:
+                msger.info("Copy resouces to be used for creating image by cpio.")
+                try:
+                    cpcmd = fs.find_binary_path('cp')
+                    if cpcmd:
+                        cpiomountdir = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
+                        runner.show('cp -r %s %s' % (cpiomountdir, self._imgdir))
+                        shutil.rmtree(cpiomountdir, ignore_errors=True)
+                except OSError, (errno, msg):
+                    raise errors.KsError("Copy resouces error: %s" % msg)
 
     def package(self, destdir = "."):
         """Prepares the created image for final delivery.
