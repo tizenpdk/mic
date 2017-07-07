@@ -1261,33 +1261,32 @@ class BaseImageCreator(object):
         for item in self._instloops:
             if item['cpioopts']:
                 msger.info("Create image by cpio.")
-                imgfile = os.path.join(self._imgdir, item['name'])
-                if imgfile:
-                    os.remove(imgfile)
+                tmp_cpio = self.__builddir + "/tmp_cpio"
+                if not os.path.exists(tmp_cpio):
+                    os.mkdir(tmp_cpio)
+                tmp_cpio_imgfile = os.path.join(tmp_cpio, item['name'])
                 try:
                     cpiocmd = fs.find_binary_path('cpio')
                     if cpiocmd:
                         oldoutdir = os.getcwd()
-                        cpiomountdir = os.path.join(self._imgdir, item['mountpoint'].lstrip('/'))
-                        os.chdir(cpiomountdir)
+                        os.chdir(tmp_cpio)
                         # find . | cpio --create --'format=newc' | gzip > ../ramdisk.img
-                        runner.show('find . | cpio --create %s | gzip > %s' % (item['cpioopts'], imgfile))
-                        shutil.rmtree(cpiomountdir, ignore_errors=True)
+                        runner.show('find . | cpio --create %s | gzip > %s' % (item['cpioopts'], tmp_cpio_imgfile))
                         os.chdir(oldoutdir)
                 except OSError, (errno, msg):
-                    raise errors.KsError("Create image by cpio error: %s" % msg)
-    def copy_cpio_resource(self):
+                    raise errors.CreatorError("Create image by cpio error: %s" % msg)
+    def copy_cpio_image(self):
         for item in self._instloops:
             if item['cpioopts']:
-                msger.info("Copy resouces to be used for creating image by cpio.")
+                tmp_cpio = self.__builddir + "/tmp_cpio"
+                msger.info("Copy cpio image from %s to %s." %(tmp_cpio, self._imgdir)) 
                 try:
-                    cpcmd = fs.find_binary_path('cp')
-                    if cpcmd:
-                        cpiomountdir = os.path.join(self._instroot, item['mountpoint'].lstrip('/'))
-                        runner.show('cp -r %s %s' % (cpiomountdir, self._imgdir))
-                        shutil.rmtree(cpiomountdir, ignore_errors=True)
-                except OSError, (errno, msg):
-                    raise errors.KsError("Copy resouces error: %s" % msg)
+                    shutil.copyfile(os.path.join(tmp_cpio, item['name']),os.path.join(self._imgdir, item['name']))  
+                except IOError:
+                    raise errors.CreatorError("Copy cpio image error")
+                os.remove(os.path.join(tmp_cpio, item['name']))
+                if not os.listdir(tmp_cpio):
+                    shutil.rmtree(tmp_cpio, ignore_errors=True)
 
     def package(self, destdir = "."):
         """Prepares the created image for final delivery.
