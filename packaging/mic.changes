@@ -1,3 +1,18 @@
+* Fri Jun 30 2017 Xiaojuan Mao <xiaojuan.mao@samsung.com> - 0.27.6
+  * Use cpio gzip in mic.
+  * fix corrupted log messages in log file
+  * change installed package name length from 20 to 50
+  * print warning message for detecting rpm post script...
+  * display all rpm debug messages in debug mode
+  * display filesystem size of each images
+  * add SIGTERM handler for exit gracefully
+  * change tpk install error message format
+  * print package name, before install
+  * Modify the arguments that use cpio to generate image.
+  * Solve mic hang issue, add timeout to show failure.
+  * Solve issue:mic has error when env no_proxy is 165.xx.xxx...
+  * Change the order of generating image by cpio.
+
 * Fri Apr 28 2017 Yuhuan Yang <yuhuan.yang@samsung.com> - 0.27.5
   * Solve image not clean after created, use e2fsck to clean image, relevant issue is NJTS-179 in JIRA.
 
