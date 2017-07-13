@@ -1261,7 +1261,7 @@ class BaseImageCreator(object):
         for item in self._instloops:
             if item['cpioopts']:
                 msger.info("Create image by cpio.")
-                tmp_cpio = self.__builddir + "/tmp_cpio"
+                tmp_cpio = self.__builddir + "/tmp-cpio"
                 if not os.path.exists(tmp_cpio):
                     os.mkdir(tmp_cpio)
                 tmp_cpio_imgfile = os.path.join(tmp_cpio, item['name'])
@@ -1269,19 +1269,20 @@ class BaseImageCreator(object):
                     cpiocmd = fs.find_binary_path('cpio')
                     if cpiocmd:
                         oldoutdir = os.getcwd()
-                        os.chdir(tmp_cpio)
+                        os.chdir(os.path.join(self._instroot, item['mountpoint'].lstrip('/')))
                         # find . | cpio --create --'format=newc' | gzip > ../ramdisk.img
                         runner.show('find . | cpio --create %s | gzip > %s' % (item['cpioopts'], tmp_cpio_imgfile))
                         os.chdir(oldoutdir)
                 except OSError, (errno, msg):
                     raise errors.CreatorError("Create image by cpio error: %s" % msg)
+
     def copy_cpio_image(self):
         for item in self._instloops:
             if item['cpioopts']:
-                tmp_cpio = self.__builddir + "/tmp_cpio"
-                msger.info("Copy cpio image from %s to %s." %(tmp_cpio, self._imgdir)) 
+                tmp_cpio = self.__builddir + "/tmp-cpio"
+                msger.info("Copy cpio image from %s to %s." %(tmp_cpio, self._imgdir))
                 try:
-                    shutil.copyfile(os.path.join(tmp_cpio, item['name']),os.path.join(self._imgdir, item['name']))  
+                    shutil.copyfile(os.path.join(tmp_cpio, item['name']),os.path.join(self._imgdir, item['name']))
                 except IOError:
                     raise errors.CreatorError("Copy cpio image error")
                 os.remove(os.path.join(tmp_cpio, item['name']))
