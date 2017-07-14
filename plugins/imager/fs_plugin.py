@@ -15,6 +15,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc., 59
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+import subprocess
 from mic import chroot, msger, rt_util
 from mic.utils import misc, errors, fs_related
 from mic.imager import fs
@@ -113,6 +114,17 @@ class FsPlugin(ImagerPlugin):
             raise
         finally:
             creator.cleanup()
+
+        #Run script of --run_script after image created
+        if creatoropts['run_script']:
+            cmd = creatoropts['run_script']
+            msger.info("Running command in parameter run_script: "+"".join(cmd))
+            try:
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+                p.communicate()
+            except OSError,err:
+                msger.warning(str(err))
+
 
         msger.info("Finished.")
         return 0

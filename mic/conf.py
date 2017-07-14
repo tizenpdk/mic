@@ -75,6 +75,7 @@ class ConfigMgr(object):
                     "extrarepos": {},
                     "ignore_ksrepo": False,
                     "strict_mode": False,
+                    "run_script": None,
                 },
                 'chroot': {
                     "saveto": None,

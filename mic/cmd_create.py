@@ -189,6 +189,8 @@ def main(parser, args, argv):
 
     if args.ignore_ksrepo:
         configmgr.create['ignore_ksrepo'] = args.ignore_ksrepo
+    if args.run_script:
+        configmgr.create['run_script'] = args.run_script
         
     creater = createrClass()
     creater.do_create(args)
