@@ -117,10 +117,8 @@ class RawPlugin(ImagerPlugin):
         #Run script of --run_script after image created
         if creatoropts['run_script']:
             cmd = creatoropts['run_script']
-            msger.info("Running command in parameter run_script: "+"".join(cmd))
             try:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-                p.communicate()
+                runner.show(cmd)
             except OSError,err:
                 msger.warning(str(err))
 
