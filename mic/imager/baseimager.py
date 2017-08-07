@@ -37,6 +37,7 @@ from mic.utils.errors import CreatorError, Abort
 from mic.utils import misc, grabber, runner, fs_related as fs
 from mic.chroot import kill_proc_inchroot
 from mic.archive import get_archive_suffixes
+from mic.conf import configmgr
 #post script max run time
 MAX_RUN_TIME = 120
 
@@ -767,6 +768,23 @@ class BaseImageCreator(object):
 
         runner.show('umount -l %s' % self.workdir)
 
+    def cp_tpk(self):
+        #Add tpk-install option
+        createopts = configmgr.create
+        if createopts['tpk_install']:
+            path = createopts['tpk_install']
+            file_list = os.listdir(path)
+            for f in file_list:
+                sub = os.path.splitext(f)[1]
+                if sub != ".tpk":
+                    raise CreatorError("Not all files in the path: "+path +" is tpk")
+
+            tpk_dir = "/usr/apps/.preload-tpk"
+            fs.makedirs(self._instroot + "/usr/apps")
+            fs.makedirs(self._instroot + tpk_dir)
+            for f in file_list:
+                shutil.copy(path+"/"+f,self._instroot + tpk_dir)
+
     def mount(self, base_on = None, cachedir = None):
         """Setup the target filesystem in preparation for an install.
 
@@ -833,6 +851,7 @@ class BaseImageCreator(object):
 
         # get size of available space in 'instroot' fs
         self._root_fs_avail = misc.get_filesystem_avail(self._instroot)
+        self.cp_tpk()
 
     def unmount(self):
         """Unmounts the target filesystem.
