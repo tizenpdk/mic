@@ -1154,13 +1154,50 @@ class BaseImageCreator(object):
     def postinstall(self):
         self.copy_attachment()
 
+    def run_sign_scripts(self):
+        if kickstart.get_sign_scripts(self.ks)==[]:
+            return
+        msger.info("Running sign scripts ...")
+        if os.path.exists(self._instroot + "/tmp"):
+            shutil.rmtree(self._instroot + "/tmp")
+        os.mkdir (self._instroot + "/tmp", 0755)
+        for s in kickstart.get_sign_scripts(self.ks):
+            (fd, path) = tempfile.mkstemp(prefix = "ks-runscript-",
+                                          dir = self._instroot + "/tmp")
+            s.script = s.script.replace("\r", "")
+            os.write(fd, s.script)
+            os.close(fd)
+            os.chmod(path, 0700)
+            for item in os.listdir(self._imgdir):
+                sub = os.path.splitext(item)[1]
+                if sub == ".img":
+                    shutil.move(os.path.join(self._imgdir, item),
+                                os.path.join(self._instroot + "/tmp", item))
+            oldoutdir = os.getcwd()
+            os.chdir(self._instroot + "/tmp")
+            try:
+                try:
+                    p = subprocess.Popen([s.interp, path],
+                                       stdout = subprocess.PIPE,
+                                       stderr = subprocess.STDOUT)
+                    while p.poll() == None:
+                        msger.info(p.stdout.readline().strip())
+                except OSError, (err, msg):
+                    raise CreatorError("Failed to execute %%sign script "
+                                       "with '%s' : %s" % (s.interp, msg))
+            finally:
+                os.chdir(oldoutdir)
+                os.unlink(path)
+                for item in os.listdir(self._instroot + "/tmp"):
+                    shutil.move(os.path.join(self._instroot + "/tmp", item),
+                                os.path.join(self._imgdir, item))
     def __run_post_scripts(self):
-        msger.info("Running scripts ...")
+        msger.info("Running post scripts ...")
         if os.path.exists(self._instroot + "/tmp"):
             shutil.rmtree(self._instroot + "/tmp")
         os.mkdir (self._instroot + "/tmp", 0755)
         for s in kickstart.get_post_scripts(self.ks):
-            (fd, path) = tempfile.mkstemp(prefix = "ks-script-",
+            (fd, path) = tempfile.mkstemp(prefix = "ks-postscript-",
                                           dir = self._instroot + "/tmp")
 
             s.script = s.script.replace("\r", "")

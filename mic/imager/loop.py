@@ -464,6 +464,7 @@ class LoopImageCreator(BaseImageCreator):
             imgsize = os.path.getsize(imgfile)
             msger.info("filesystem size of %s : %s bytes" % (item, imgsize))
 
+        self.run_sign_scripts()
         if not self.pack_to:
             for item in os.listdir(self._imgdir):
                 shutil.move(os.path.join(self._imgdir, item),

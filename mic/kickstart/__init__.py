@@ -813,6 +813,13 @@ def get_post_scripts(ks):
         scripts.append(s)
     return scripts
 
+def get_sign_scripts(ks):
+    scripts = []
+    for s in ks.handler.scripts:
+        if s.type != ksparser.KS_SCRIPT_RUN:
+            continue
+        scripts.append(s)
+    return scripts
 def add_repo(ks, repostr):
     args = repostr.split()
     repoobj = ks.handler.repo.parse(args[1:])

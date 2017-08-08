@@ -202,6 +202,8 @@ class Script(KickstartObject):
             retval += '\n%post'
         elif self.type == constants.KS_SCRIPT_TRACEBACK:
             retval += '\n%traceback'
+        elif self.type == constants.KS_SCRIPT_RUN:
+            retval += '\n%runscript'
 
         if self.interp != "/bin/sh" and self.interp != "":
             retval += " --interpreter=%s" % self.interp
@@ -699,4 +701,5 @@ class KickstartParser:
         self.registerSection(PreScriptSection(self.handler, dataObj=Script))
         self.registerSection(PostScriptSection(self.handler, dataObj=Script))
         self.registerSection(TracebackScriptSection(self.handler, dataObj=Script))
+        self.registerSection(RunScriptSection(self.handler, dataObj=Script))
         self.registerSection(PackageSection(self.handler))
