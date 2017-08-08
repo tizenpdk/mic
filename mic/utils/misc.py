@@ -619,7 +619,8 @@ def get_metadata_from_repos(repos, cachedir):
                                  "proxies":proxies,
                                  "patterns":filepaths['patterns'],
                                  "comps":filepaths['comps'],
-                                 "repokey":repokey})
+                                 "repokey":repokey,
+                                 "priority":repo.priority})
 
     return my_repo_metadata
 
@@ -697,6 +698,7 @@ def get_arch(repometadata):
 
 def get_package(pkg, repometadata, arch = None):
     ver = ""
+    priority = 99
     target_repo = None
     if not arch:
         arches = []
@@ -714,6 +716,16 @@ def get_package(pkg, repometadata, arch = None):
             for elm in root.getiterator("%spackage" % ns):
                 if elm.find("%sname" % ns).text == pkg:
                     if elm.find("%sarch" % ns).text in arches:
+                        if repo["priority"] != None:
+                            tmpprior = int(repo["priority"])
+                            if tmpprior < priority:
+                                priority = tmpprior
+                                location = elm.find("%slocation" % ns)
+                                pkgpath = "%s" % location.attrib['href']
+                                target_repo = repo
+                                break
+                            elif tmpprior > priority:
+                                break
                         version = elm.find("%sversion" % ns)
                         tmpver = "%s-%s" % (version.attrib['ver'], version.attrib['rel'])
                         if tmpver > ver:
