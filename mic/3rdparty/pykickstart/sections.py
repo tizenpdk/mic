@@ -194,6 +194,11 @@ class TracebackScriptSection(ScriptSection):
         ScriptSection._resetScript(self)
         self._script["type"] = KS_SCRIPT_TRACEBACK
 
+class RunScriptSection(ScriptSection):
+    sectionOpen = "%runscript"
+    def _resetScript(self):
+        ScriptSection._resetScript(self)
+        self._script["type"] = KS_SCRIPT_RUN
 class PackageSection(Section):
     sectionOpen = "%packages"
 
