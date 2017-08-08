@@ -64,7 +64,8 @@ class ConfigMgrTest(unittest.TestCase):
              'primary': '%s/test/primary.sqlite' % cachedir,
              'proxies': None,
              'repokey': None,
-             'repomd': '%s/test/repomd.xml' % cachedir}]
+             'repomd': '%s/test/repomd.xml' % cachedir,
+             'priority': None}]
         self.configmgr._ksconf = KSCONF
         self.assertTrue(isinstance(self.configmgr.create['ks'], KickstartParser))
         #self.assertEqual(self.configmgr.create['name'], 'test')
