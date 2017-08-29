@@ -200,16 +200,23 @@ class TimezoneConfig(KickstartConfig):
         f.write("ZONE=\"" + tz + "\"\n")
         f.write("UTC=" + utc + "\n")
         f.close()
+        if not os.path.exists("/opt/etc"):
+            fs.makedirs("/opt/etc")
         tz_source = "/usr/share/zoneinfo/%s" % (tz)
+        tz_midst = "/opt/etc/localtime"
         tz_dest = "/etc/localtime"
         try:
             lncmd = fs.find_binary_inchroot('ln', self.instroot)
             if lncmd:
-                self.call([lncmd, "-s", tz_source, tz_dest])
+                self.call([lncmd, "-s", tz_source, tz_midst])
+                self.call([lncmd, "-s", tz_midst, tz_dest])
             else:
                 lncmd = fs.find_binary_path('ln')
                 subprocess.call([lncmd, "-s",
                                  self.path(tz_source),
+                                 self.path(tz_midst)])
+                subprocess.call([lncmd, "-s",
+                                 self.path(tz_midst),
                                  self.path(tz_dest)])
         except (IOError, OSError), (errno, msg):
             raise errors.KsError("Timezone setting error: %s" % msg)
