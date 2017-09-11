@@ -1,3 +1,13 @@
+* Fri Sep 15 2017 Yuhuan Yang <yuhuan.yang@samsung.com> - 0.27.7
+  * Timezone setting change
+  * Run certain script before creation of tar.gz image
+  * Locally built mic-bootstrap using gbs cannot be used in mic
+  * Add new option of tpk_install
+  * Amend mic cr option of run_script
+  * Add new option of --run_script
+  * fix the bug that modify the order of generating image by cpio
+  * Modify the order of generating image by cpio
+
 * Fri Jun 30 2017 Xiaojuan Mao <xiaojuan.mao@samsung.com> - 0.27.6
   * Use cpio gzip in mic.
   * fix corrupted log messages in log file

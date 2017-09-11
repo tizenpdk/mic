@@ -1,3 +1,15 @@
+mic (0.27.7) unstable; urgency=low
+  * Timezone setting change
+  * Run certain script before creation of tar.gz image
+  * Locally built mic-bootstrap using gbs cannot be used in mic
+  * Add new option of tpk_install
+  * Amend mic cr option of run_script
+  * Add new option of --run_script
+  * fix the bug that modify the order of generating image by cpio
+  * Modify the order of generating image by cpio
+
+ -- Yuhuan Yang <yuhuan.yang@samsung.com>  Fri, 15 Sep 2017 15:00:00 +0800
+
 mic (0.27.6) unstable; urgency=low
   * Use cpio gzip in mic.
   * fix corrupted log messages in log file
