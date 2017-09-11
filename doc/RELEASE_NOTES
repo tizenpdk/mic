@@ -1,3 +1,24 @@
+MIC Image Creator 0.27.7 Release Notes
+======================================
+Released Sep 15 2017
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * Timezone setting change
+  * Run certain script before creation of tar.gz image
+  * Locally built mic-bootstrap using gbs cannot be used in mic
+  * Add new option of tpk_install
+  * Amend mic cr option of run_script
+  * Add new option of --run_script
+  * Modify the order of generating image by cpio
+
+Bug Fixes
+---------
+  * fix the bug that modify the order of generating image by cpio
+
 MIC Image Creator 0.27.6 Release Notes
 ======================================
 Released Jun 30 2017
