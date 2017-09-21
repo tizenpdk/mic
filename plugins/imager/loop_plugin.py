@@ -16,6 +16,7 @@
 # Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 import os
+import subprocess
 import shutil
 import tempfile
 
@@ -118,6 +119,16 @@ class LoopPlugin(ImagerPlugin):
             raise
         finally:
             creator.cleanup()
+
+        #Run script of --run_script after image created
+        if creatoropts['run_script']:
+            cmd = creatoropts['run_script']
+            msger.info("Running command in parameter run_script: "+"".join(cmd))
+            try:
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+                p.communicate()
+            except OSError,err:
+                msger.warning(str(err))
 
         msger.info("Finished.")
         return 0

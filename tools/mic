@@ -124,7 +124,7 @@ def create_parser(parser):
                                dest='strict_mode', default=False,
                                help='Abort creation of image, if there are some errors'
                                     ' during rpm installation. ')
-     
+
     parent_parser.add_argument('-d', '--debug', action='store_true',
                                help='debug output')
     parent_parser.add_argument('-v', '--verbose', action='store_true',
@@ -132,6 +132,8 @@ def create_parser(parser):
     parent_parser.add_argument('-i', '--interactive', action='store_true',
                                 dest='interactive', default=True,
                                help='interactive output')
+    parent_parser.add_argument('--run_script', action='store', dest='run_script',
+                                                   default=None, help='Run script on local PC after image created')
 
     parser.set_defaults(alias="cr")
 
