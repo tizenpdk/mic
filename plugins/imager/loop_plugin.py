@@ -102,9 +102,9 @@ class LoopPlugin(ImagerPlugin):
             creator.install()
             creator.configure(creatoropts["repomd"])
             creator.copy_kernel()
-            creator.copy_cpio_resource()
-            creator.unmount()
             creator.create_cpio_image()
+            creator.unmount()
+            creator.copy_cpio_image()
             creator.package(creatoropts["destdir"])
             creator.create_manifest()
 
