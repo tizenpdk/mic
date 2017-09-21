@@ -1,3 +1,29 @@
+MIC Image Creator 0.27.6 Release Notes
+======================================
+Released Jun 30 2017
+
+This release note documents the changes included in the new release. And
+the release contains new features, enhancements and bug fixes.
+
+New Features & Enhancements
+--------------------------
+  * Use cpio gzip in mic.
+  * fix corrupted log messages in log file
+  * change installed package name length from 20 to 50
+  * print warning message for detecting rpm post script...
+  * display all rpm debug messages in debug mode
+  * display filesystem size of each images
+  * add SIGTERM handler for exit gracefully
+  * change tpk install error message format
+  * print package name, before install
+  * Modify the arguments that use cpio to generate image.
+  * Solve mic hang issue, add timeout to show failure.
+  * Solve issue:mic has error when env no_proxy is 165.xx.xxx...
+  * Change the order of generating image by cpio.
+
+Bug Fixes
+---------
+
 MIC Image Creator 0.27.5 Release Notes
 ======================================
 Released Apr 28 2017
