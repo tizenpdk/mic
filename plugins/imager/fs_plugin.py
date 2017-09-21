@@ -17,7 +17,7 @@
 
 import subprocess
 from mic import chroot, msger, rt_util
-from mic.utils import misc, errors, fs_related
+from mic.utils import misc, errors, fs_related, runner
 from mic.imager import fs
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
@@ -118,10 +118,8 @@ class FsPlugin(ImagerPlugin):
         #Run script of --run_script after image created
         if creatoropts['run_script']:
             cmd = creatoropts['run_script']
-            msger.info("Running command in parameter run_script: "+"".join(cmd))
             try:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-                p.communicate()
+                runner.show(cmd)
             except OSError,err:
                 msger.warning(str(err))
 

@@ -21,7 +21,7 @@ import shutil
 import tempfile
 
 from mic import chroot, msger, rt_util
-from mic.utils import misc, fs_related, errors
+from mic.utils import misc, fs_related, errors, runner
 from mic.conf import configmgr
 from mic.plugin import pluginmgr
 from mic.imager.loop import LoopImageCreator, load_mountpoints
@@ -123,10 +123,8 @@ class LoopPlugin(ImagerPlugin):
         #Run script of --run_script after image created
         if creatoropts['run_script']:
             cmd = creatoropts['run_script']
-            msger.info("Running command in parameter run_script: "+"".join(cmd))
             try:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-                p.communicate()
+                runner.show(cmd)
             except OSError,err:
                 msger.warning(str(err))
 
