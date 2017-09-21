@@ -76,6 +76,7 @@ class ConfigMgr(object):
                     "ignore_ksrepo": False,
                     "strict_mode": False,
                     "run_script": None,
+                    "tpk_install": None,
                 },
                 'chroot': {
                     "saveto": None,

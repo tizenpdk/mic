@@ -134,6 +134,8 @@ def create_parser(parser):
                                help='interactive output')
     parent_parser.add_argument('--run_script', action='store', dest='run_script',
                                                    default=None, help='Run script on local PC after image created')
+    parent_parser.add_argument('--tpk_install', action='store', dest='tpk_install',
+                                                                       default=None, help='Copy tpk file to /usr/apps/.preload-tpk')
 
     parser.set_defaults(alias="cr")
 
